@@ -31,6 +31,17 @@ const config: Config = {
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you
   // may want to replace "en" with "zh-Hans".
+  i18n: {
+    defaultLocale: "ru",
+    locales: ["ru"],
+    localeConfigs: {
+      ru: {
+        label: "Русский",
+        direction: "ltr",
+        htmlLang: "ru-RU",
+      },
+    },
+  },
 
   presets: [
     [
@@ -115,11 +126,11 @@ const config: Config = {
           items: [
             {
               label: "Go",
-              to: "/go/category/go-основы",
+              to: "go/category/go-основы",
             },
             {
               label: "PostgreSQL",
-              to: "/postgresql/category/postgresql-основы",
+              to: "postgresql/category/postgresql-основы",
             },
           ],
         },
