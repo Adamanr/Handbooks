@@ -88,6 +88,16 @@ const config: Config = {
         sidebarPath: "./postgresSidebar.ts",
       },
     ],
+    [
+      "docusaurus-plugin-yandex-metrica",
+      {
+        counterID: "106058654",
+        clickmap: true,
+        trackLinks: true,
+        accurateTrackBounce: true,
+        webvisor: true,
+      },
+    ],
   ],
 
   themeConfig: {
@@ -170,26 +180,6 @@ const config: Config = {
       theme: prismThemes.github,
       darkTheme: prismThemes.dracula,
     },
-    headTags: [
-      {
-        tagName: "script",
-        attributes: { async: true, type: "text/javascript" },
-        innerHTML: `
-            (function(m,e,t,r,i,k,a){
-                m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
-                m[i].l=1*new Date();
-                for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
-                k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
-            })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=106058654', 'ym');
-
-            ym(106058654, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
-          `,
-      },
-      {
-        tagName: "noscript",
-        innerHTML: `<div><img src="https://mc.yandex.ru/watch/106058654" style="position:absolute; left:-9999px;" alt="" /></div>`,
-      },
-    ],
   } satisfies Preset.ThemeConfig,
 };
 
