@@ -1,6 +1,6 @@
-go: 
+go:
   label: Golang
-  permalink: /go
+  permalink: /Handbooks/go
   description: Golang tag description
 
 postgresql:

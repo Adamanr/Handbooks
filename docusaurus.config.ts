@@ -32,8 +32,8 @@ const config: Config = {
   // useful metadata like html lang. For example, if your site is Chinese, you
   // may want to replace "en" with "zh-Hans".
   i18n: {
-    defaultLocale: "ru",
-    locales: ["ru"],
+    defaultLocale: "en",
+    locales: ["en"],
   },
 
   presets: [
@@ -144,7 +144,7 @@ const config: Config = {
           title: "Дополнительные ссылки",
           items: [
             {
-              label: "Блог",
+              label: "Блог ",
               to: "/blog",
             },
           ],
