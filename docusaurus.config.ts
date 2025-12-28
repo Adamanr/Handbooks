@@ -126,11 +126,11 @@ const config: Config = {
           items: [
             {
               label: "Go",
-              to: "go/category/go-основы",
+              to: "/go/category/go-основы",
             },
             {
               label: "PostgreSQL",
-              to: "postgresql/category/postgresql-основы",
+              to: "/postgresql/category/postgresql-основы",
             },
           ],
         },
