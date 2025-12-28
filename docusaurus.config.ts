@@ -89,14 +89,8 @@ const config: Config = {
       },
     ],
     [
-      "docusaurus-plugin-yandex-metrica",
-      {
-        counterID: "106058654",
-        clickmap: true,
-        trackLinks: true,
-        accurateTrackBounce: true,
-        webvisor: true,
-      },
+      "@gracefullight/docusaurus-plugin-yandex-metrica",
+      { counterId: "106058654" },
     ],
   ],
 
