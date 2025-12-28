@@ -5,9 +5,10 @@ import type * as Preset from "@docusaurus/preset-classic";
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 const config: Config = {
-  title: "Обучение",
-  tagline: "Обучим всему, что хотите",
-  favicon: "img/favicon.ico",
+  title: "Хендбук",
+  tagline:
+    "Этот справочник предназначен для поддержки изучения актуальных технологических решений на 2026 год. Сейчас основное внимание уделяется двум направлениям: языку программирования Go и СУБД PostgreSQL, однако в будущем количество направлений будет расширено.",
+  favicon: "img/books.svg",
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
@@ -15,16 +16,16 @@ const config: Config = {
   },
 
   // Set the production url of your site here
-  url: "https://your-docusaurus-site.example.com",
+  url: "https://adamanr.github.io/",
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
-  baseUrl: "/",
+  baseUrl: "/Handbooks/",
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
-  organizationName: "facebook", // Usually your GitHub org/user name.
-  projectName: "docusaurus", // Usually your repo name.
-
+  organizationName: "adamanr", // Usually your GitHub org/user name.
+  projectName: "adamanr.github.io", // Usually your repo name.
+  trailingSlash: false,
   onBrokenLinks: "throw",
 
   // Even if you don't use internationalization, you can use this field to set
@@ -32,7 +33,7 @@ const config: Config = {
   // may want to replace "en" with "zh-Hans".
   i18n: {
     defaultLocale: "ru",
-    locales: ["en", "ru"],
+    locales: ["ru"],
   },
 
   presets: [
@@ -40,22 +41,18 @@ const config: Config = {
       "classic",
       {
         docs: {
-          sidebarPath: "./sidebars.ts",
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          editUrl:
-            "https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/",
+          id: "go",
+          path: "docs-go",
+          routeBasePath: "go",
+          sidebarPath: "./goSidebar.ts",
         },
+
         blog: {
           showReadingTime: true,
           feedOptions: {
             type: ["rss", "atom"],
             xslt: true,
           },
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          editUrl:
-            "https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/",
           // Useful options to enforce blogging best practices
           onInlineTags: "warn",
           onInlineAuthors: "warn",
@@ -67,31 +64,49 @@ const config: Config = {
       } satisfies Preset.Options,
     ],
   ],
+  plugins: [
+    [
+      "@docusaurus/plugin-content-docs",
+      {
+        id: "postgresql",
+        path: "docs-postgresql",
+        routeBasePath: "postgresql",
+        sidebarPath: "./postgresSidebar.ts",
+      },
+    ],
+  ],
 
   themeConfig: {
     // Replace with your project's social card
-    image: "img/docusaurus-social-card.jpg",
+    image: "img/books.svg",
     colorMode: {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: "Обучени",
+      title: "Хендбук",
       logo: {
-        alt: "My Site Logo",
-        src: "img/logo.svg",
+        alt: "Handbooks logo",
+        src: "img/books.svg",
       },
       items: [
         {
           type: "docSidebar",
-          sidebarId: "tutorialSidebar",
+          sidebarId: "goSidebar",
           position: "left",
-          label: "Tutorial",
+          label: "Go",
+          docsPluginId: "go",
         },
-        { to: "/blog", label: "Blog", position: "left" },
-        { to: "/blog", label: "Blog", position: "left" },
         {
-          href: "https://github.com/facebook/docusaurus",
-          label: "GitHub",
+          type: "docSidebar",
+          sidebarId: "postgresSidebar",
+          position: "left",
+          label: "PostgreSQL",
+          docsPluginId: "postgresql",
+        },
+        { to: "/blog", label: "Блог", position: "right" },
+        {
+          href: "https://github.com/Adamanr/Handbooks/issues",
+          label: "Нашли ошибку?",
           position: "right",
         },
       ],
@@ -100,46 +115,42 @@ const config: Config = {
       style: "dark",
       links: [
         {
-          title: "Docs",
+          title: "Курсы",
           items: [
             {
-              label: "Tutorial",
-              to: "/docs/intro",
+              label: "Go",
+              to: "/go/category/go-основы",
+            },
+            {
+              label: "PostgreSQL",
+              to: "/postgresql/category/postgresql-основы",
             },
           ],
         },
         {
-          title: "Community",
+          title: "Ссылки проекта",
           items: [
             {
-              label: "Stack Overflow",
-              href: "https://stackoverflow.com/questions/tagged/docusaurus",
+              label: "GitHub Проекта",
+              href: "https://github.com/Adamanr/Handbooks",
             },
             {
-              label: "Discord",
-              href: "https://discordapp.com/invite/docusaurus",
-            },
-            {
-              label: "X",
-              href: "https://x.com/docusaurus",
+              label: "GitHub Автора",
+              href: "https://github.com/Adamanr",
             },
           ],
         },
         {
-          title: "More",
+          title: "Дополнительные ссылки",
           items: [
             {
-              label: "Blog",
+              label: "Блог",
               to: "/blog",
-            },
-            {
-              label: "GitHub",
-              href: "https://github.com/facebook/docusaurus",
             },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} My Project, Inc. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Handbooks, Inc. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,

@@ -1,0 +1,1485 @@
+---
+sidebar_position: 11
+description: "В этом уроке мы изучим как работать с тестируемыми функциями и методами, а также как использовать фреймворк testing для написания юнит-тестов."
+---
+
+# Тестирование
+
+## Введение в тестирование
+
+Go имеет встроенную поддержку тестирования через пакет `testing`. Это делает написание тестов простым и стандартизированным процессом.
+
+## Основы Unit-тестирования
+
+### Что такое юнит-тесты?
+
+**Юнит-тесты** (unit tests) — это **автоматические тесты**, которые проверяют **отдельные маленькие части кода** (обычно одну функцию или метод) в изоляции от остальной программы.
+
+#### Главная идея
+- **Юнит** = минимальная единица кода, которую можно протестировать (функция, метод структуры).
+- Тест проверяет: при определённых входных данных функция выдаёт **ожидаемый результат** и ведёт себя правильно.
+- Всё остальное (база данных, сеть, файлы) подменяется **моками** или фиктивными данными, чтобы тест был быстрым и предсказуемым.
+
+
+### Структура тестового файла
+
+Тесты в Go размещаются в файлах с суффиксом `_test.go`:
+
+```go
+// Файл: math.go
+package math
+
+// Add складывает два числа
+func Add(a, b int) int {
+    return a + b
+}
+
+// Subtract вычитает второе число из первого
+func Subtract(a, b int) int {
+    return a - b
+}
+
+// Multiply умножает два числа
+func Multiply(a, b int) int {
+    return a * b
+}
+
+// Divide делит первое число на второе
+func Divide(a, b float64) (float64, error) {
+    if b == 0 {
+        return 0, errors.New("деление на ноль")
+    }
+    return a / b, nil
+}
+```
+
+```go
+// Файл: math_test.go
+package math
+
+import (
+    "testing"
+)
+
+// Тестовая функция начинается с Test
+func TestAdd(t *testing.T) {
+    result := Add(2, 3)
+    expected := 5
+    
+    if result != expected {
+        t.Errorf("Add(2, 3) = %d; ожидается %d", result, expected)
+    }
+}
+
+func TestSubtract(t *testing.T) {
+    result := Subtract(5, 3)
+    expected := 2
+    
+    if result != expected {
+        t.Errorf("Subtract(5, 3) = %d; ожидается %d", result, expected)
+    }
+}
+
+func TestMultiply(t *testing.T) {
+    result := Multiply(3, 4)
+    expected := 12
+    
+    if result != expected {
+        t.Errorf("Multiply(3, 4) = %d; ожидается %d", result, expected)
+    }
+}
+
+func TestDivide(t *testing.T) {
+    result, err := Divide(10, 2)
+    if err != nil {
+        t.Errorf("Неожиданная ошибка: %v", err)
+    }
+    
+    expected := 5.0
+    if result != expected {
+        t.Errorf("Divide(10, 2) = %f; ожидается %f", result, expected)
+    }
+}
+
+func TestDivideByZero(t *testing.T) {
+    _, err := Divide(10, 0)
+    if err == nil {
+        t.Error("Ожидалась ошибка при делении на ноль")
+    }
+}
+```
+
+### Запуск тестов
+
+```bash
+# Запустить все тесты в текущем пакете
+go test
+
+# Запустить тесты с подробным выводом
+go test -v
+
+# Запустить конкретный тест
+go test -run TestAdd
+
+# Запустить тесты во всех подпакетах
+go test ./...
+
+# Запустить с покрытием кода
+go test -cover
+
+# Генерировать отчет о покрытии
+go test -coverprofile=coverage.out
+go tool cover -html=coverage.out
+```
+
+## Table-Driven Tests (табличные тесты)
+
+Табличные тесты - это идиоматичный способ в Go для тестирования множества случаев:
+
+```go
+// Файл: string_utils_test.go
+package stringutils
+
+import (
+    "testing"
+)
+
+func TestReverse(t *testing.T) {
+    tests := []struct {
+        name     string
+        input    string
+        expected string
+    }{
+        {
+            name:     "обычная строка",
+            input:    "hello",
+            expected: "olleh",
+        },
+        {
+            name:     "пустая строка",
+            input:    "",
+            expected: "",
+        },
+        {
+            name:     "строка с пробелами",
+            input:    "hello world",
+            expected: "dlrow olleh",
+        },
+        {
+            name:     "строка с Unicode",
+            input:    "привет",
+            expected: "тевирп",
+        },
+        {
+            name:     "одиночный символ",
+            input:    "a",
+            expected: "a",
+        },
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            result := Reverse(tt.input)
+            if result != tt.expected {
+                t.Errorf("Reverse(%q) = %q; ожидается %q", 
+                    tt.input, result, tt.expected)
+            }
+        })
+    }
+}
+
+func TestIsPalindrome(t *testing.T) {
+    tests := []struct {
+        name     string
+        input    string
+        expected bool
+    }{
+        {"пустая строка", "", true},
+        {"одна буква", "a", true},
+        {"палиндром", "racecar", true},
+        {"не палиндром", "hello", false},
+        {"палиндром с пробелами", "А роза упала на лапу Азора", true},
+        {"палиндром числа", "12321", true},
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            result := IsPalindrome(tt.input)
+            if result != tt.expected {
+                t.Errorf("IsPalindrome(%q) = %v; ожидается %v",
+                    tt.input, result, tt.expected)
+            }
+        })
+    }
+}
+```
+
+## Подтесты (Subtests)
+
+Подтесты позволяют группировать связанные тесты и контролировать их выполнение:
+
+```go
+func TestValidateUser(t *testing.T) {
+    t.Run("валидация username", func(t *testing.T) {
+        tests := []struct {
+            name      string
+            username  string
+            shouldErr bool
+        }{
+            {"корректный username", "john_doe", false},
+            {"слишком короткий", "ab", true},
+            {"слишком длинный", strings.Repeat("a", 51), true},
+            {"пустой", "", true},
+            {"с пробелами", "john doe", true},
+        }
+        
+        for _, tt := range tests {
+            t.Run(tt.name, func(t *testing.T) {
+                err := ValidateUsername(tt.username)
+                if (err != nil) != tt.shouldErr {
+                    t.Errorf("ValidateUsername(%q) error = %v; shouldErr = %v",
+                        tt.username, err, tt.shouldErr)
+                }
+            })
+        }
+    })
+    
+    t.Run("валидация email", func(t *testing.T) {
+        tests := []struct {
+            name      string
+            email     string
+            shouldErr bool
+        }{
+            {"корректный email", "test@example.com", false},
+            {"без @", "testexample.com", true},
+            {"без домена", "test@", true},
+            {"пустой", "", true},
+        }
+        
+        for _, tt := range tests {
+            t.Run(tt.name, func(t *testing.T) {
+                err := ValidateEmail(tt.email)
+                if (err != nil) != tt.shouldErr {
+                    t.Errorf("ValidateEmail(%q) error = %v; shouldErr = %v",
+                        tt.email, err, tt.shouldErr)
+                }
+            })
+        }
+    })
+}
+
+// Запуск конкретного подтеста
+// go test -run TestValidateUser/валидация_username
+```
+
+## Хелперы для тестов
+
+### Что такое хелперы в тестах Go и зачем они нужны? 
+
+**Хелперы (test helpers)** — это **вспомогательные функции**, которые ты пишешь сам, чтобы сделать тесты **короче, чище и удобнее для чтения**. Они не влияют на логику тестируемого кода, а только помогают проверять результаты.
+
+#### Зачем нужны хелперы?
+1. **Уменьшают дублирование кода в тестах**  
+   Вместо того чтобы в каждом тесте писать одно и то же:
+   ```go
+   if got != want {
+       t.Errorf("got %v; want %v", got, want)
+   }
+   ```
+   ты выносишь это в функцию `assertEqual` и используешь её везде.
+
+2. **Делают тесты читаемыми**  
+   Сравни:
+   ```go
+   // Без хелпера — громоздко
+   if user == nil {
+       t.Error("expected non-nil user")
+   }
+   if user.Username != "john" {
+       t.Errorf("got %q, want %q", user.Username, "john")
+   }
+
+   // С хелпером — красиво и понятно
+   assertNotNil(t, user)
+   assertEqual(t, user.Username, "john")
+   ```
+   Второй вариант сразу видно, что именно проверяется.
+
+3. **t.Helper() — важная магия**  
+   Когда ты вызываешь `t.Helper()` внутри хелпера, Go понимает: "это вспомогательная функция".  
+   При ошибке в тесте **номер строки будет показан в самом тесте**, а не внутри хелпера.
+
+   Пример вывода ошибки:
+   ```
+   // Без t.Helper()
+   testing_helpers_test.go:15: got nil; want &User{...}
+
+   // С t.Helper()
+   testing_helpers_test.go:45: assertNotNil failed  // ← строка из TestUserCreation!
+   ```
+
+   Это сильно упрощает отладку: ты сразу видишь, в каком тесте проблема.
+
+#### Когда стоит писать хелперы
+- Если одна и та же проверка повторяется в нескольких тестах.
+- Если хочешь использовать table-driven tests (таблицу тестов) и сделать их компактными.
+- Если проект большой и тесты становятся трудночитаемыми.
+
+#### Популярные хелперы 
+```go
+func assertEqual[T comparable](t *testing.T, got, want T) {
+    t.Helper()
+    if got != want {
+        t.Errorf("got %v, want %v", got, want)
+    }
+}
+
+func assertNoError(t *testing.T, err error) {
+    t.Helper()
+    if err != nil {
+        t.Errorf("unexpected error: %v", err)
+    }
+}
+
+func assertError(t *testing.T, err error) {
+    t.Helper()
+    if err == nil {
+        t.Error("expected error, got nil")
+    }
+}
+```
+
+С дженериками (Go 1.18+) `assertEqual` работает с любым сравнимым типом.
+
+#### Альтернативы (для информации)
+- Библиотека **testify** (`require`, `assert`) — очень популярна, даёт готовые хелперы.
+- **gotest.tools/assert** — лёгкая альтернатива.
+- Но в небольших проектах или для обучения — свои хелперы отлично учат понимать, как работают тесты.
+
+
+### Примеры 
+
+```go
+// Файл: testing_helpers_test.go
+package myapp
+
+import (
+    "testing"
+)
+
+// assertEqual - вспомогательная функция для сравнения значений
+func assertEqual(t *testing.T, got, want interface{}) {
+    t.Helper() // Указывает, что это вспомогательная функция
+    if got != want {
+        t.Errorf("got %v; want %v", got, want)
+    }
+}
+
+// assertError - проверяет наличие ошибки
+func assertError(t *testing.T, err error, wantErr bool) {
+    t.Helper()
+    if (err != nil) != wantErr {
+        t.Errorf("error = %v; wantErr = %v", err, wantErr)
+    }
+}
+
+// assertNil - проверяет, что значение nil
+func assertNil(t *testing.T, got interface{}) {
+    t.Helper()
+    if got != nil {
+        t.Errorf("expected nil, got %v", got)
+    }
+}
+
+// assertNotNil - проверяет, что значение не nil
+func assertNotNil(t *testing.T, got interface{}) {
+    t.Helper()
+    if got == nil {
+        t.Error("expected non-nil value")
+    }
+}
+
+// Использование хелперов
+func TestUserCreation(t *testing.T) {
+    user := CreateUser("john", "john@example.com")
+    
+    assertNotNil(t, user)
+    assertEqual(t, user.Username, "john")
+    assertEqual(t, user.Email, "john@example.com")
+}
+```
+
+## Мокирование и интерфейсы
+
+Моки (mocks) — это поддельные реализации интерфейсов или зависимостей, которые используются только в тестах.
+Они имитируют поведение реальных компонентов (например, базы данных, внешних API, файловой системы), но работают быстро, предсказуемо и без побочных эффектов.
+
+### Что такое моки и зачем они нужны? 
+
+**Моки (mocks)** — это **поддельные реализации** интерфейсов или зависимостей, которые используются **только в тестах**.  
+Они имитируют поведение реальных компонентов (например, базы данных, внешних API, файловой системы), но работают быстро, предсказуемо и без побочных эффектов.
+
+#### Зачем нужны моки?
+1. **Тестировать логику в изоляции**  
+   Ты хочешь проверить, правильно ли работает твой сервис (`UserService`), а не база данных.  
+   С моками ты можешь сосредоточиться только на коде сервиса, не запуская настоящую БД.
+
+2. **Контролировать поведение зависимостей**  
+   Ты можешь заставить мок возвращать:
+   - Успешный результат
+   - Ошибку (например, "пользователь не найден")
+   - Любые данные, какие нужно для теста
+
+3. **Быстрые и надёжные тесты**  
+   Тесты с моками работают за миллисекунды, не зависят от сети, базы данных или внешних сервисов.  
+   Они всегда дают одинаковый результат при одинаковых входных данных.
+
+4. **Проверять сложные сценарии**  
+   Например:
+   - Что будет, если база данных вернёт ошибку?
+   - Что будет, если пользователь с таким email уже существует?
+   С реальной БД это сложно симулировать, а с моками — легко.
+
+#### Как это работает в примере ниже
+- У тебя есть интерфейс `UserRepository` — это контракт для работы с пользователями.
+- Реальная реализация (например, с PostgreSQL) будет где-то в другом месте.
+- В тестах ты создаёшь **MockUserRepository** — структуру, которая реализует тот же интерфейс, но поведение задаёшь сам через функции (`GetByIDFunc`, `CreateFunc` и т.д.).
+- Передаёшь этот мок в `UserService` — и сервис думает, что работает с настоящим репозиторием.
+
+```go
+mockRepo := &MockUserRepository{
+    GetByIDFunc: func(ctx context.Context, id int) (*User, error) {
+        return &User{ID: 1, Username: "john", Email: "john@example.com"}, nil
+    },
+}
+
+service := NewUserService(mockRepo)  // сервис не знает, что это мок!
+user, err := service.GetUser(ctx, 1)
+```
+
+#### Почему интерфейсы так важны для моков?
+Потому что в Go **зависимости передаются через интерфейсы**.  
+Благодаря этому:
+- Сервис не привязан к конкретной реализации (БД, файл, память).
+- В продакшене — настоящая БД.
+- В тестах — мок.
+Это называется **внедрение зависимостей (dependency injection)** — один из ключевых принципов хорошей архитектуры.
+
+#### Альтернативы мокам (для информации)
+- **Тестовая база данных** (в памяти, например, SQLite) — медленнее, сложнее настраивать.
+- **Библиотеки для моков**: `testify/mock`, `gomock` — автоматически генерируют моки, но для начала ручные моки (как в примере) — лучший способ понять суть.
+
+
+
+### Примеры 
+
+```go
+// Файл: user_service.go
+package service
+
+import (
+    "context"
+    "errors"
+)
+
+// UserRepository - интерфейс для работы с пользователями
+type UserRepository interface {
+    GetByID(ctx context.Context, id int) (*User, error)
+    Create(ctx context.Context, user *User) error
+    Update(ctx context.Context, user *User) error
+    Delete(ctx context.Context, id int) error
+}
+
+type User struct {
+    ID       int
+    Username string
+    Email    string
+}
+
+type UserService struct {
+    repo UserRepository
+}
+
+func NewUserService(repo UserRepository) *UserService {
+    return &UserService{repo: repo}
+}
+
+func (s *UserService) GetUser(ctx context.Context, id int) (*User, error) {
+    if id <= 0 {
+        return nil, errors.New("некорректный ID")
+    }
+    return s.repo.GetByID(ctx, id)
+}
+
+func (s *UserService) CreateUser(ctx context.Context, username, email string) (*User, error) {
+    if username == "" {
+        return nil, errors.New("username обязателен")
+    }
+    if email == "" {
+        return nil, errors.New("email обязателен")
+    }
+    
+    user := &User{
+        Username: username,
+        Email:    email,
+    }
+    
+    if err := s.repo.Create(ctx, user); err != nil {
+        return nil, err
+    }
+    
+    return user, nil
+}
+```
+
+```go
+// Файл: user_service_test.go
+package service
+
+import (
+    "context"
+    "errors"
+    "testing"
+)
+
+// MockUserRepository - мок для тестирования
+type MockUserRepository struct {
+    GetByIDFunc func(ctx context.Context, id int) (*User, error)
+    CreateFunc  func(ctx context.Context, user *User) error
+    UpdateFunc  func(ctx context.Context, user *User) error
+    DeleteFunc  func(ctx context.Context, id int) error
+}
+
+func (m *MockUserRepository) GetByID(ctx context.Context, id int) (*User, error) {
+    if m.GetByIDFunc != nil {
+        return m.GetByIDFunc(ctx, id)
+    }
+    return nil, errors.New("не реализовано")
+}
+
+func (m *MockUserRepository) Create(ctx context.Context, user *User) error {
+    if m.CreateFunc != nil {
+        return m.CreateFunc(ctx, user)
+    }
+    return errors.New("не реализовано")
+}
+
+func (m *MockUserRepository) Update(ctx context.Context, user *User) error {
+    if m.UpdateFunc != nil {
+        return m.UpdateFunc(ctx, user)
+    }
+    return errors.New("не реализовано")
+}
+
+func (m *MockUserRepository) Delete(ctx context.Context, id int) error {
+    if m.DeleteFunc != nil {
+        return m.DeleteFunc(ctx, id)
+    }
+    return errors.New("не реализовано")
+}
+
+func TestGetUser(t *testing.T) {
+    tests := []struct {
+        name      string
+        userID    int
+        mockFunc  func(ctx context.Context, id int) (*User, error)
+        wantErr   bool
+        wantUser  *User
+    }{
+        {
+            name:   "успешное получение пользователя",
+            userID: 1,
+            mockFunc: func(ctx context.Context, id int) (*User, error) {
+                return &User{ID: 1, Username: "john", Email: "john@example.com"}, nil
+            },
+            wantErr:  false,
+            wantUser: &User{ID: 1, Username: "john", Email: "john@example.com"},
+        },
+        {
+            name:   "пользователь не найден",
+            userID: 999,
+            mockFunc: func(ctx context.Context, id int) (*User, error) {
+                return nil, errors.New("пользователь не найден")
+            },
+            wantErr:  true,
+            wantUser: nil,
+        },
+        {
+            name:     "некорректный ID",
+            userID:   -1,
+            mockFunc: nil,
+            wantErr:  true,
+            wantUser: nil,
+        },
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            mockRepo := &MockUserRepository{
+                GetByIDFunc: tt.mockFunc,
+            }
+            
+            service := NewUserService(mockRepo)
+            user, err := service.GetUser(context.Background(), tt.userID)
+            
+            if (err != nil) != tt.wantErr {
+                t.Errorf("GetUser() error = %v, wantErr %v", err, tt.wantErr)
+                return
+            }
+            
+            if !tt.wantErr && user.Username != tt.wantUser.Username {
+                t.Errorf("GetUser() = %v, want %v", user, tt.wantUser)
+            }
+        })
+    }
+}
+
+func TestCreateUser(t *testing.T) {
+    tests := []struct {
+        name      string
+        username  string
+        email     string
+        mockFunc  func(ctx context.Context, user *User) error
+        wantErr   bool
+    }{
+        {
+            name:     "успешное создание",
+            username: "john",
+            email:    "john@example.com",
+            mockFunc: func(ctx context.Context, user *User) error {
+                user.ID = 1
+                return nil
+            },
+            wantErr: false,
+        },
+        {
+            name:     "пустой username",
+            username: "",
+            email:    "john@example.com",
+            mockFunc: nil,
+            wantErr:  true,
+        },
+        {
+            name:     "пустой email",
+            username: "john",
+            email:    "",
+            mockFunc: nil,
+            wantErr:  true,
+        },
+        {
+            name:     "ошибка репозитория",
+            username: "john",
+            email:    "john@example.com",
+            mockFunc: func(ctx context.Context, user *User) error {
+                return errors.New("ошибка БД")
+            },
+            wantErr: true,
+        },
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            mockRepo := &MockUserRepository{
+                CreateFunc: tt.mockFunc,
+            }
+            
+            service := NewUserService(mockRepo)
+            _, err := service.CreateUser(context.Background(), tt.username, tt.email)
+            
+            if (err != nil) != tt.wantErr {
+                t.Errorf("CreateUser() error = %v, wantErr %v", err, tt.wantErr)
+            }
+        })
+    }
+}
+```
+
+## Бенчмарки (Benchmarking)
+
+### Что такое бенчмарки
+
+**Бенчмарки** (benchmarks) — это **автоматические тесты производительности**, которые измеряют, **насколько быстро и эффективно** работает твой код (и сколько памяти он потребляет).
+
+Они отвечают на вопросы:
+- Сколько времени занимает выполнение функции?
+- Какой подход быстрее: циклы, рекурсия, strings.Builder или обычный `+`?
+- Сколько памяти выделяется (allocations)?
+- Как код масштабируется при параллельном выполнении?
+
+#### Как работают бенчмарки в Go
+- Пишешь функцию с именем `BenchmarkXXX(b *testing.B)`.
+- Внутри цикла `for i := 0; i < b.N; i++ { ... }` выполняешь тестируемый код.
+- Go сам подбирает значение `b.N` (количество итераций), чтобы бенчмарк длился достаточно долго (обычно ~1 секунда) и результат был точным.
+- Запускаешь командой `go test -bench=.`
+
+#### Пример
+```go
+func BenchmarkFibonacci(b *testing.B) {
+    for i := 0; i < b.N; i++ {
+        Fibonacci(20)  // тестируем функцию вычисления Фибоначчи
+    }
+}
+```
+
+Go запустит эту функцию миллионы раз (b.N будет большим), измерит время и выдаст что-то вроде:
+```
+BenchmarkFibonacci-8    12345678    95.2 ns/op
+```
+Это значит:
+- На 8-ядерной машине
+- 12 миллионов итераций
+- В среднем 95.2 наносекунд на одну операцию
+
+#### Полезные фишки
+- **-benchmem** — показывает выделение памяти:
+  ```
+  12345678    95.2 ns/op    48 B/op    3 allocs/op
+  ```
+  (сколько байт и сколько раз выделялась память на итерацию)
+
+- **b.ReportAllocs()** — включает отчёт о памяти в конкретном суб-бенчмарке.
+
+- **b.ResetTimer() / b.StopTimer() / b.StartTimer()** — управляют таймером, чтобы не учитывать подготовку данных.
+
+- **b.RunParallel()** — тестирует производительность в параллельных горутинах (важно для реальных приложений).
+
+- **Таблица бенчмарков** (`b.Run`) — сравниваешь разные реализации в одном тесте.
+
+#### Зачем нужны бенчмарки?
+1. **Выбираешь лучший алгоритм**  
+   Например, сравниваешь конкатенацию строк через `+` и через `strings.Builder` — сразу видно, что Builder в десятки раз быстрее и не выделяет лишнюю память.
+
+2. **Ловишь регрессии производительности**  
+   После изменения кода запускаешь бенчмарки — если стало медленнее, сразу видно.
+
+3. **Оптимизируешь код**  
+   Понимаешь, где узкие места (много аллокаций, медленные операции).
+
+4. **Проверяешь масштабируемость**  
+   Параллельные бенчмарки показывают, как код ведёт себя под нагрузкой.
+
+#### Как запускать и сравнивать
+```bash
+go test -bench=. -benchmem          # все бенчмарки с памятью
+go test -bench=Fibonacci -count=10  # 10 прогонов для точности
+go test -bench=. -benchtime=5s      # прогонять дольше для стабильности
+```
+
+Для сравнения до/после изменений:
+```bash
+go test -bench=. -benchmem > old.txt
+# меняешь код
+go test -bench=. -benchmem > new.txt
+benchstat old.txt new.txt  # утилита для красивого сравнения
+```
+
+### Примеры
+
+```go
+// Файл: performance_test.go
+package algorithms
+
+import (
+    "testing"
+)
+
+// Простой бенчмарк
+func BenchmarkFibonacci(b *testing.B) {
+    for i := 0; i < b.N; i++ {
+        Fibonacci(20)
+    }
+}
+
+// Бенчмарк с параметрами
+func BenchmarkFibonacciTable(b *testing.B) {
+    tests := []struct {
+        name string
+        n    int
+    }{
+        {"Fibonacci10", 10},
+        {"Fibonacci20", 20},
+        {"Fibonacci30", 30},
+    }
+    
+    for _, tt := range tests {
+        b.Run(tt.name, func(b *testing.B) {
+            for i := 0; i < b.N; i++ {
+                Fibonacci(tt.n)
+            }
+        })
+    }
+}
+
+// Бенчмарк с выделением памяти
+func BenchmarkStringConcat(b *testing.B) {
+    b.Run("оператор +", func(b *testing.B) {
+        b.ReportAllocs() // Отображает информацию о выделении памяти
+        for i := 0; i < b.N; i++ {
+            result := ""
+            for j := 0; j < 100; j++ {
+                result += "x"
+            }
+        }
+    })
+    
+    b.Run("strings.Builder", func(b *testing.B) {
+        b.ReportAllocs()
+        for i := 0; i < b.N; i++ {
+            var builder strings.Builder
+            for j := 0; j < 100; j++ {
+                builder.WriteString("x")
+            }
+            _ = builder.String()
+        }
+    })
+}
+
+// Бенчмарк с предварительной подготовкой
+func BenchmarkSortLargeSlice(b *testing.B) {
+    // Данные создаются один раз перед началом измерений
+    data := generateRandomSlice(10000)
+    
+    b.ResetTimer() // Сброс таймера после подготовки
+    
+    for i := 0; i < b.N; i++ {
+        b.StopTimer() // Останавливаем таймер для копирования данных
+        dataCopy := make([]int, len(data))
+        copy(dataCopy, data)
+        b.StartTimer() // Возобновляем таймер
+        
+        sort.Ints(dataCopy)
+    }
+}
+
+// Параллельные бенчмарки
+func BenchmarkParallelProcessing(b *testing.B) {
+    b.RunParallel(func(pb *testing.PB) {
+        for pb.Next() {
+            // Код, выполняемый параллельно
+            ProcessData(generateData())
+        }
+    })
+}
+```
+
+Запуск бенчмарков:
+
+```bash
+# Запустить все бенчмарки
+go test -bench=.
+
+# Запустить конкретный бенчмарк
+go test -bench=BenchmarkFibonacci
+
+# С информацией о памяти
+go test -bench=. -benchmem
+
+# Несколько прогонов для точности
+go test -bench=. -count=5
+
+# Запуск определенное время
+go test -bench=. -benchtime=10s
+
+# Сравнение производительности
+go test -bench=. -benchmem > old.txt
+# Вносим изменения в код
+go test -bench=. -benchmem > new.txt
+# Используем benchcmp для сравнения
+benchcmp old.txt new.txt
+```
+
+## Примеры
+
+Примеры в Go служат как документацией, так и тестами:
+
+```go
+// Файл: example_test.go
+package stringutils
+
+import (
+    "fmt"
+)
+
+// Простой пример
+func ExampleReverse() {
+    result := Reverse("hello")
+    fmt.Println(result)
+    // Вывод: olleh
+}
+
+// Пример с множественным выводом
+func ExampleSplit() {
+    parts := Split("one,two,three", ",")
+    for _, part := range parts {
+        fmt.Println(part)
+    }
+    // Вывод:
+    // one
+    // two
+    // three
+}
+
+// Пример для метода
+func ExampleUser_FullName() {
+    user := User{
+        FirstName: "John",
+        LastName:  "Doe",
+    }
+    fmt.Println(user.FullName())
+    // Вывод: John Doe
+}
+
+// Пример с неупорядоченным выводом
+func ExampleGetUsers() {
+    users := GetUsers()
+    for id := range users {
+        fmt.Println(id)
+    }
+    // Unordered Вывод:
+    // 1
+    // 2
+    // 3
+}
+
+// Именованные примеры (варианты использования)
+func ExampleReverse_unicode() {
+    result := Reverse("привет")
+    fmt.Println(result)
+    // Вывод: тевирп
+}
+
+func ExampleReverse_empty() {
+    result := Reverse("")
+    fmt.Println(result)
+    // Вывод: 
+}
+```
+
+## Интеграционное тестирование
+
+### Что такое интеграционное тестирование?
+
+**Интеграционное тестирование** — это вид тестирования, который проверяет, **как разные части программы работают вместе** (интегрируются друг с другом), а не по отдельности.
+
+Если **юнит-тесты** проверяют одну функцию или сервис в изоляции (с моками вместо реальных зависимостей), то **интеграционные тесты** используют **реальные** или почти реальные компоненты: базу данных, файловую систему, внешние API, кэш и т.д.
+
+#### Главная цель
+Убедиться, что:
+- Модули, которые по отдельности работают правильно, вместе тоже работают корректно.
+- Данные правильно передаются между слоями (сервис → репозиторий → БД).
+- Нет проблем на стыках: ошибки маппинга, неправильные SQL-запросы, проблемы с транзакциями и т.д.
+
+#### Пример 
+```go
+func TestUserCRUD(t *testing.T) {
+    db := setupTestDB(t)        // подключение к настоящей тестовой БД
+    repo := NewUserRepository(db)  // реальный репозиторий, который делает SQL-запросы
+
+    // Создаём, читаем, обновляем, удаляем пользователя
+    // Всё происходит в реальной базе данных
+}
+```
+
+Здесь тестируется не только логика репозитория, но и:
+- Правильно ли подключение к PostgreSQL?
+- Правильно ли написаны SQL-запросы?
+- Корректно ли работает автоинкремент ID?
+- Правильно ли очищаются таблицы между тестами?
+
+Это уже **не юнит-тест**, потому что зависит от внешней системы (БД).
+
+#### Отличия от юнит-тестов
+
+| Характеристика              | Юнит-тесты                          | Интеграционные тесты                     |
+|--------------------------------|-------------------------------------|------------------------------------------|
+| Что тестируем                  | Один модуль в изоляции              | Взаимодействие нескольких модулей        |
+| Зависимости                    | Моки или заглушки                   | Реальные (БД, API, файлы) или тестовые   |
+| Скорость                       | Очень быстрые (миллисекунды)        | Медленнее (секунды)                      |
+| Запуск                         | Часто (при каждом `go test`)        | Реже, отдельно (с тегами, флагами)       |
+| Надёжность                     | Очень стабильные                    | Могут падать из-за внешних факторов      |
+| Когда писать                   | Всегда, для всей бизнес-логики      | Для критических интеграций (БД, API)     |
+
+#### Когда нужны интеграционные тесты
+- Работа с базой данных (GORM, sqlx, sql).
+- Взаимодействие с внешними сервисами (HTTP-клиенты, message brokers).
+- Сложные транзакции.
+- Миграции данных.
+- Полные сценарии (end-to-end без UI).
+
+#### Как обычно организуют в Go
+- Помечают теги: `//go:build integration` или `// +build integration`.
+- Запускают отдельно: `go test -tags=integration`.
+- Пропускают в коротком режиме: `if testing.Short() { t.Skip() }`.
+- Используют тестовую БД (отдельная схема или Docker-контейнер).
+- Очищают состояние перед/после теста (setup/teardown).
+
+### Пример
+
+```go
+// Файл: integration_test.go
+// +build integration
+
+package integration
+
+import (
+    "context"
+    "database/sql"
+    "testing"
+    "time"
+    
+    _ "github.com/lib/pq"
+)
+
+func setupTestDB(t *testing.T) *sql.DB {
+    t.Helper()
+    
+    // Подключение к тестовой БД
+    db, err := sql.Open("postgres", "postgresql://user:pass@localhost/testdb?sslmode=disable")
+    if err != nil {
+        t.Fatalf("не удалось подключиться к БД: %v", err)
+    }
+    
+    // Очистка данных перед тестом
+    _, err = db.Exec("TRUNCATE TABLE users RESTART IDENTITY CASCADE")
+    if err != nil {
+        t.Fatalf("не удалось очистить таблицу: %v", err)
+    }
+    
+    return db
+}
+
+func teardownTestDB(t *testing.T, db *sql.DB) {
+    t.Helper()
+    if err := db.Close(); err != nil {
+        t.Errorf("ошибка закрытия БД: %v", err)
+    }
+}
+
+func TestUserCRUD(t *testing.T) {
+    if testing.Short() {
+        t.Skip("пропуск интеграционного теста в коротком режиме")
+    }
+    
+    db := setupTestDB(t)
+    defer teardownTestDB(t, db)
+    
+    repo := NewUserRepository(db)
+    ctx := context.Background()
+    
+    // Создание пользователя
+    t.Run("создание пользователя", func(t *testing.T) {
+        user := &User{
+            Username: "john_doe",
+            Email:    "john@example.com",
+        }
+        
+        err := repo.Create(ctx, user)
+        if err != nil {
+            t.Fatalf("ошибка создания пользователя: %v", err)
+        }
+        
+        if user.ID == 0 {
+            t.Error("ID пользователя должен быть установлен")
+        }
+    })
+    
+    // Получение пользователя
+    t.Run("получение пользователя", func(t *testing.T) {
+        user, err := repo.GetByID(ctx, 1)
+        if err != nil {
+            t.Fatalf("ошибка получения пользователя: %v", err)
+        }
+        
+        if user.Username != "john_doe" {
+            t.Errorf("username = %s; ожидается john_doe", user.Username)
+        }
+    })
+    
+    // Обновление пользователя
+    t.Run("обновление пользователя", func(t *testing.T) {
+        user, _ := repo.GetByID(ctx, 1)
+        user.Email = "newemail@example.com"
+        
+        err := repo.Update(ctx, user)
+        if err != nil {
+            t.Fatalf("ошибка обновления пользователя: %v", err)
+        }
+        
+        updatedUser, _ := repo.GetByID(ctx, 1)
+        if updatedUser.Email != "newemail@example.com" {
+            t.Errorf("email не обновлен")
+        }
+    })
+    
+    // Удаление пользователя
+    t.Run("удаление пользователя", func(t *testing.T) {
+        err := repo.Delete(ctx, 1)
+        if err != nil {
+            t.Fatalf("ошибка удаления пользователя: %v", err)
+        }
+        
+        _, err = repo.GetByID(ctx, 1)
+        if err == nil {
+            t.Error("пользователь должен быть удален")
+        }
+    })
+}
+
+// Запуск интеграционных тестов:
+// go test -tags=integration ./...
+```
+
+## Тестирование конкурентного кода
+
+```go
+// Файл: concurrent_test.go
+package cache
+
+import (
+    "sync"
+    "testing"
+    "time"
+)
+
+func TestCacheConcurrency(t *testing.T) {
+    cache := NewCache()
+    
+    const numGoroutines = 100
+    const numOperations = 1000
+    
+    var wg sync.WaitGroup
+    wg.Add(numGoroutines * 2) // Читатели и писатели
+    
+    // Писатели
+    for i := 0; i < numGoroutines; i++ {
+        go func(id int) {
+            defer wg.Done()
+            for j := 0; j < numOperations; j++ {
+                key := fmt.Sprintf("key-%d-%d", id, j)
+                cache.Set(key, j)
+            }
+        }(i)
+    }
+    
+    // Читатели
+    for i := 0; i < numGoroutines; i++ {
+        go func(id int) {
+            defer wg.Done()
+            for j := 0; j < numOperations; j++ {
+                key := fmt.Sprintf("key-%d-%d", id, j)
+                cache.Get(key)
+            }
+        }(i)
+    }
+    
+    // Таймаут для обнаружения дедлоков
+    done := make(chan struct{})
+    go func() {
+        wg.Wait()
+        close(done)
+    }()
+    
+    select {
+    case <-done:
+        // Все горутины завершились успешно
+    case <-time.After(10 * time.Second):
+        t.Fatal("тест превысил таймаут - возможен дедлок")
+    }
+}
+
+func TestRaceCondition(t *testing.T) {
+    counter := 0
+    var mu sync.Mutex
+    
+    const numGoroutines = 100
+    var wg sync.WaitGroup
+    wg.Add(numGoroutines)
+    
+    for i := 0; i < numGoroutines; i++ {
+        go func() {
+            defer wg.Done()
+            for j := 0; j < 1000; j++ {
+                mu.Lock()
+                counter++
+                mu.Unlock()
+            }
+        }()
+    }
+    
+    wg.Wait()
+    
+    expected := numGoroutines * 1000
+    if counter != expected {
+        t.Errorf("counter = %d; ожидается %d", counter, expected)
+    }
+}
+
+// Запуск с детектором гонок данных:
+// go test -race
+```
+
+## Лучшие практики тестирования
+
+### 1. Именование тестов
+
+```go
+// Хорошо
+func TestUserService_CreateUser_WithValidData_ReturnsUser(t *testing.T) {}
+func TestUserService_CreateUser_WithEmptyUsername_ReturnsError(t *testing.T) {}
+
+// Плохо
+func TestUser1(t *testing.T) {}
+func TestCreateUser(t *testing.T) {}
+```
+
+### 2. Организация тестов
+
+```go
+// Хорошо: используйте табличные тесты и подтесты
+func TestValidation(t *testing.T) {
+    tests := []struct {
+        name    string
+        input   string
+        wantErr bool
+    }{
+        // тестовые случаи
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            // тест
+        })
+    }
+}
+```
+
+### 3. Изоляция тестов
+
+```go
+// Хорошо: каждый тест независим
+func TestFeatureA(t *testing.T) {
+    data := setupTestData()
+    defer cleanupTestData(data)
+    // тест
+}
+
+// Плохо: тесты зависят друг от друга
+var globalState int
+
+func TestFeatureA(t *testing.T) {
+    globalState = 1
+}
+
+func TestFeatureB(t *testing.T) {
+    // Зависит от TestFeatureA
+    if globalState != 1 {
+        t.Fatal("неверное состояние")
+    }
+}
+```
+
+### 4. Тестирование границ
+
+```go
+func TestDivide(t *testing.T) {
+    tests := []struct {
+        name      string
+        a, b      float64
+        want      float64
+        wantError bool
+    }{
+        {"обычный случай", 10, 2, 5, false},
+        {"деление на ноль", 10, 0, 0, true},
+        {"отрицательные числа", -10, 2, -5, false},
+        {"очень большие числа", 1e308, 2, 5e307, false},
+        {"очень маленькие числа", 1e-308, 2, 5e-309, false},
+    }
+    // ...
+}
+```
+
+## Покрытие кода (Code Coverage)
+
+```bash
+# Генерация отчета о покрытии
+go test -coverprofile=coverage.out
+
+# Просмотр процента покрытия
+go tool cover -func=coverage.out
+
+# Визуализация покрытия в браузере
+go tool cover -html=coverage.out
+
+# Покрытие для всех пакетов
+go test -coverprofile=coverage.out ./...
+
+# Покрытие с детализацией по пакетам
+go test -coverpkg=./... -coverprofile=coverage.out ./...
+```
+
+## Тестовые утилиты
+
+```go
+// Файл: testutil/testutil.go
+package testutil
+
+import (
+    "io/ioutil"
+    "os"
+    "path/filepath"
+    "testing"
+)
+
+// CreateTempDir создает временную директорию для тестов
+func CreateTempDir(t *testing.T) string {
+    t.Helper()
+    
+    dir, err := ioutil.TempDir("", "test-*")
+    if err != nil {
+        t.Fatalf("не удалось создать временную директорию: %v", err)
+    }
+    
+    t.Cleanup(func() {
+        os.RemoveAll(dir)
+    })
+    
+    return dir
+}
+
+// CreateTestFile создает тестовый файл с содержимым
+func CreateTestFile(t *testing.T, dir, filename, content string) string {
+    t.Helper()
+    
+    path := filepath.Join(dir, filename)
+    if err := ioutil.WriteFile(path, []byte(content), 0644); err != nil {
+        t.Fatalf("не удалось создать тестовый файл: %v", err)
+    }
+    
+    return path
+}
+
+// AssertEqual проверяет равенство значений
+func AssertEqual(t *testing.T, got, want interface{}) {
+    t.Helper()
+    if got != want {
+        t.Errorf("got %v, want %v", got, want)
+    }
+}
+
+// AssertError проверяет наличие ошибки
+func AssertError(t *testing.T, err error) {
+    t.Helper()
+    if err == nil {
+        t.Error("ожидалась ошибка, получено nil")
+    }
+}
+
+// AssertNoError проверяет отсутствие ошибки
+func AssertNoError(t *testing.T, err error) {
+    t.Helper()
+    if err != nil {
+        t.Errorf("неожиданная ошибка: %v", err)
+    }
+}
+```
+
+## Упражнения
+
+Запускай `go test -v` для детального вывода, `go test -bench=. -benchmem` для бенчмарков, `go test -race` для проверки гонок.
+
+### 1. **Тесты для математического калькулятора**  
+   Напиши функцию `Add(a, b int) int` — простое сложение.  
+
+   В `add_test.go` создай [**таблицу тестов**](#table-driven-tests-табличные-тесты) с 6–8 случаями:  
+   - Положительные числа  
+   - Отрицательные  
+   - Нули  
+   - Большие числа (например, 1_000_000 + 2_000_000)  
+
+   Используй `t.Run` и выведи красивые имена тестов:  
+   ```
+   === RUN   TestAdd/положительные_числа
+   --- PASS: TestAdd/положительные_числа (0.00s)
+   === RUN   TestAdd/отрицательные_числа
+   === RUN   TestAdd/с_нулём
+   === RUN   TestAdd/большие_числа
+   PASS
+   ```
+
+   **Бонус**: добавь один заведомо провальный тест и покажи, как `go test` ругается красным.
+
+### 2. **Безопасный делитель — тесты с ошибками**  
+   Напиши функцию `SafeDivide(a, b float64) (float64, error)`:  
+   - Деление на ноль → ошибка "🚨 Деление на ноль запрещено!" (используй `fmt.Errorf`).  
+
+   Напиши 5 тестов:  
+   - Успешные (10/2, 0/5, -15/3)  
+   - Деление на ноль  
+   - Деление ноля на ноль  
+
+   Выведи в тестах:  
+   ```
+   ✅ Успешное деление 10.00 / 2.00 = 5.00
+   🚨 ОШИБКА: Деление на ноль запрещено! (для 15.00 / 0.00)
+   ```
+
+### 3. **Мок для приветствия — подмена реальности**  
+   Создай интерфейс `Greeter` с методом `Greet(name string) string`.  
+
+   Структура `HelloService` использует Greeter и возвращает "🌍 Привет, " + greeter.Greet(name) + "!"  
+
+   В тесте создай мок с `GreetFunc`.  
+   Напиши 4 теста:  
+   - Нормальное имя  
+   - Пустое имя (мок возвращает "неизвестный")  
+   - Длинное имя  
+   - С эмодзи в имени  
+
+   Вывод:  
+   ```
+   🌍 Привет, Алексей!
+   🌍 Привет, неизвестный! (кто-то стесняется)
+   ```
+
+### 4. **Бенчмарк войны строк — + vs Builder**  
+   Напиши два бенчмарка:  
+   - `BenchmarkConcatPlus` — конкатенация `s += "Go"` в цикле 1000 раз.  
+   - `BenchmarkBuilder` — `strings.Builder` с `WriteString("Go")`.  
+
+   Добавь `b.ReportAllocs()`.  
+
+   Запусти `go test -bench=. -benchmem` и покажи студентам разницу:  
+   ```
+   BenchmarkConcatPlus-8    100000    12345 ns/op    8192 B/op    1000 allocs/op  😱 Медленно и жрёт память!
+   BenchmarkBuilder-8      1000000      987 ns/op       0 B/op       0 allocs/op  ⚡ Молния!
+   ```
+
+### 5. **Тест на безопасность счётчика — гонка данных**  
+   Структура `SafeCounter` с `value int` и `sync.Mutex`. Метод `Increment()`.  
+
+   Тест: 100 горутин × 100 инкрементов = должно быть ровно 10 000.  
+
+   Сначала покажи версию **без мьютекса** → `go test -race` покажет гонку!  
+   Потом с мьютексом → чисто!  
+
+   Вывод:  
+   ```
+   🔒 Безопасный счётчик: финальное значение = 10000 ✅
+   🏁 Гонка данных поймана! (в версии без мьютекса)
+   ```
+
+### 6. **Бонус: супергеройские хелперы для тестов**  
+   Создай файл `test_helpers.go` с хелперами:  
+   - `AssertEqual(t *testing.T, got, want int)`  
+   - `AssertNoError(t *testing.T, err error)`  
+   - `AssertError(t *testing.T, err error)`  
+
+   Все с `t.Helper()`.  
+
+   Перепиши тесты из заданий 1–2 с использованием хелперов.  
+   Вывод станет чище:  
+   ```
+   --- PASS: TestAdd (0.00s)
+       положительные_числа: OK
+       отрицательные_числа: OK
+   ```
