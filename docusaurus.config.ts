@@ -66,7 +66,14 @@ const config: Config = {
           onUntruncatedBlogPosts: "warn",
         },
         theme: {
-          customCss: "./src/css/custom.css",
+          customCss: [
+            // not my styles. Taken from here:
+            // https://github.com/vendure-ecommerce/vendure/blob/cc4826dfb7c1a2f4e6ed8daa13eb017090d8bd9a/docs/src/css/custom.css
+            require.resolve("./src/css/custom.css"),
+            require.resolve("./src/css/layout.css"),
+            require.resolve("./src/css/overrides.css"),
+            require.resolve("./src/css/code-blocks.css"),
+          ],
         },
       } satisfies Preset.Options,
     ],
