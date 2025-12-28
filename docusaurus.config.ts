@@ -90,7 +90,7 @@ const config: Config = {
     ],
     [
       "@gracefullight/docusaurus-plugin-yandex-metrica",
-      { counterId: "106058654" },
+      { counterId: 106058654 },
     ],
   ],
 
