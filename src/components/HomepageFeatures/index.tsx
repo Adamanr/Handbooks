@@ -45,18 +45,20 @@ const FeatureList: FeatureItem[] = [
 
 function Feature({ title, Svg, description, link, shortTitle }: FeatureItem) {
   return (
-    <div className={clsx("col col--6")}>
+    <div className={clsx("col col-2")}>
       <div className="text--center">
         <Svg className={styles.featureSvg} role="img" />
       </div>
       <div className="text--center padding-horiz--md">
         <Heading as="h3">{title}</Heading>
         <p>{description}</p>
+        <br />
         <div className={styles.buttons}>
           <Link className="button button--secondary button--lg" to={link}>
             Начать изучение {shortTitle}!
           </Link>
         </div>
+        <br />
       </div>
     </div>
   );
@@ -65,7 +67,7 @@ function Feature({ title, Svg, description, link, shortTitle }: FeatureItem) {
 export default function HomepageFeatures(): ReactNode {
   return (
     <section className={styles.features}>
-      <div className="container">
+      <div className="">
         <div className="row">
           {FeatureList.map((props, idx) => (
             <Feature key={idx} {...props} />
