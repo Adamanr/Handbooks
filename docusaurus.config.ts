@@ -198,7 +198,7 @@ const config: Config = {
             },
             {
               label: "Контейнеризация",
-              to: "/containerization/category/containerization-основы",
+              to: "/k8s/into",
             },
           ],
         },

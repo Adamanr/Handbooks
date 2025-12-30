@@ -72,7 +72,7 @@ const FeatureList: FeatureItem[] = [
         секретами, мониторинг, масштабирование и многое другое!
       </>
     ),
-    link: "containerization/category/docker-основы",
+    link: "k8s/into",
   },
 ];
 
