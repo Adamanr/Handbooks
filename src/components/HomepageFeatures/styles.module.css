@@ -1,11 +1,142 @@
 .features {
-  display: flex;
-  align-items: center;
-  padding: 2rem 0;
-  width: 100%;
+    display: flex;
+    align-items: center;
+    padding: 2rem 0;
+    width: 100%;
 }
 
 .featureSvg {
-  height: 200px;
-  width: 200px;
+    height: 200px;
+    width: 200px;
+}
+
+.block {
+    width: 100%;
+    margin-bottom: 2rem;
+}
+
+/* Основной грид-контейнер */
+.grid {
+    display: grid;
+}
+
+/* Количество колонок */
+.gridCols1 {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+.gridCols2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Отступы между элементами (gap) */
+.gap0 {
+    gap: 0;
+}
+
+.gap1 {
+    gap: 0.25rem;
+} /* 4px */
+
+.gap2 {
+    gap: 0.5rem;
+} /* 8px */
+
+.gap3 {
+    gap: 0.75rem;
+} /* 12px */
+
+.gap4 {
+    gap: 1rem;
+} /* 16px */
+
+.gap5 {
+    gap: 1.25rem;
+} /* 20px */
+
+.gap6 {
+    gap: 1.5rem;
+} /* 24px */
+
+.gap8 {
+    gap: 2rem;
+} /* 32px */
+
+.gap10 {
+    gap: 2.5rem;
+} /* 40px */
+
+.gap12 {
+    gap: 3rem;
+} /* 48px */
+
+.gap16 {
+    gap: 4rem;
+} /* 64px */
+
+/* Отступы только по горизонтали и вертикали */
+.gapX0 {
+    column-gap: 0;
+}
+
+.gapX4 {
+    column-gap: 1rem;
+}
+
+.gapX6 {
+    column-gap: 1.5rem;
+}
+
+.gapX8 {
+    column-gap: 2rem;
+}
+
+.gapY0 {
+    row-gap: 0;
+}
+
+.gapY4 {
+    row-gap: 1rem;
+}
+
+.gapY6 {
+    row-gap: 1.5rem;
+}
+
+.gapY8 {
+    row-gap: 2rem;
+}
+
+.mY2 {
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+}
+
+.mY4 {
+    margin-top: 4rem;
+    margin-bottom: 4rem;
+}
+
+.mY6 {
+    margin-top: 6rem;
+    margin-bottom: 6rem;
+}
+
+.mY8 {
+    margin-top: 8rem;
+    margin-bottom: 8rem;
+}
+
+.mY10 {
+    margin-top: 10rem;
+    margin-bottom: 10rem;
+}
+
+.mY12 {
+    margin-top: 12rem;
+    margin-bottom: 12rem;
+}
+
+.mY16 {
+    margin-top: 16rem;
+    margin-bottom: 16rem;
 }

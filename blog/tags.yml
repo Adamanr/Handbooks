@@ -1,9 +1,219 @@
 go:
   label: Golang
   permalink: /Handbooks/go
-  description: Golang tag description
+  description: Язык программирования Go, разработанный Google. Идеален для высоконагруженных систем, микросервисов и cloud-native разработки благодаря простоте, производительности и встроенной поддержке конкурентности.
 
 postgresql:
   label: PostgreSQL
   permalink: /postgresql
-  description: PostgreSQL tag description
+  description: Мощная объектно-реляционная СУБД с открытым исходным кодом. Известна своей надежностью, расширяемостью и богатым функционалом для сложных запросов.
+
+podman:
+  label: Podman
+  permalink: /podman
+  description: Инструмент контейнеризации без демона (daemonless). Альтернатива Docker с поддержкой rootless-контейнеров и совместимым API.
+
+python:
+  label: Python
+  permalink: /python
+  description: Универсальный язык программирования с простым синтаксисом. Широко используется в веб-разработке, анализе данных, машинном обучении и автоматизации.
+
+beam:
+  label: Beam
+  permalink: /beam
+  description: Виртуальная машина Erlang (BEAM). Обеспечивает работу языков Erlang и Elixir, известна своей способностью обрабатывать миллионы параллельных процессов с высокой отказоустойчивостью.
+
+rust:
+  label: Rust
+  permalink: /rust
+  description: Системный язык программирования с гарантиями безопасности памяти. Сочетает низкоуровневый контроль с высокой производительностью, не используя сборщик мусора.
+
+elixir:
+  label: Elixir
+  permalink: /elixir
+  description: Функциональный язык программирования, работающий на BEAM. Создан для создания масштабируемых, отказоустойчивых приложений с низкой задержкой.
+
+erlang:
+  label: Erlang
+  permalink: /erlang
+  description: Язык программирования и среда выполнения для телекоммуникационных систем. Известен моделью акторов, отказоустойчивостью и поддержкой распределенных систем.
+
+phoenix:
+  label: Phoenix
+  permalink: /phoenix
+  description: Веб-фреймворк на языке Elixir. Обеспечивает высокую производительность и масштабируемость веб-приложений благодаря архитектуре на основе BEAM.
+
+soft-skills:
+  label: Soft Skills
+  permalink: /soft-skills
+  description: Мягкие навыки разработчика коммуникация, командная работа, продуктивность, управление временем и развитие карьеры.
+
+review:
+  label: Рецензии
+  permalink: /review
+  description: Рецензии на технические книги. Личные впечатления, оценка полезности и рекомендации по изучению.
+
+research:
+  label: Исследования
+  permalink: /research
+  description: Исследовательские статьи и обзоры технологий. Глубокий анализ инструментов, языков и подходов к разработке.
+
+language:
+  label: Языки
+  permalink: /language
+  description: Статьи о языках программирования - их особенностях, преимуществах и областях применения.
+
+docker:
+  label: Docker
+  permalink: /docker
+  description: Платформа контейнеризации. Упаковывает приложения с зависимостями в изолированные контейнеры для переносимости и масштабирования.
+
+devops:
+  label: DevOps
+  permalink: /devops
+  description: Практики и инструменты DevOps - контейнеризация, CI/CD, мониторинг, оркестрация и автоматизация развертывания.
+
+kubernetes:
+  label: Kubernetes
+  permalink: /kubernetes
+  description: Система оркестрации контейнеров. Автоматизирует развертывание, масштабирование и управление контейнеризированными приложениями.
+
+kafka:
+  label: Kafka
+  permalink: /kafka
+  description: Распределенная платформа потоковой передачи событий. Используется для построения real-time data pipelines и high-throughput приложений.
+
+rabbitmq:
+  label: RabbitMQ
+  permalink: /rabbitmq
+  description: Брокер сообщений с поддержкой протокола AMQP. Обеспечивает асинхронное взаимодействие между сервисами с гибкой маршрутизацией.
+
+redis:
+  label: Redis
+  permalink: /redis
+  description: Репозиторий структур данных в памяти. Используется как кэш, message broker и хранилище для high-speed операций.
+
+elk:
+  label: ELK Stack
+  permalink: /elk
+  description: Стек инструментов для работы с логами - Elasticsearch (поиск), Logstash (сбор), Kibana (визуализация).
+
+grafana:
+  label: Grafana
+  permalink: /grafana
+  description: Платформа визуализации и мониторинга метрик. Создает интерактивные дашборды из различных источников данных.
+
+prometheus:
+  label: Prometheus
+  permalink: /prometheus
+  description: Система мониторинга и алертинга. Собирает метрики по модели pull, поддерживает гибкие запросы и интеграцию с Grafana.
+
+graphql:
+  label: GraphQL
+  permalink: /graphql
+  description: Язык запросов к API. Позволяет клиентам запрашивать только нужные данные, уменьшая объем передаваемой информации.
+
+architecture:
+  label: Архитектура
+  permalink: /architecture
+  description: Архитектурные паттерны и подходы к проектированию систем - микросервисы, монолиты, DDD, событийно-ориентированная архитектура.
+
+pattern:
+  label: Паттерны
+  permalink: /patterns
+  description: Паттерны проектирования программного обеспечения и их применение в реальных проектах.
+
+highload:
+  label: Highload
+  permalink: /highload
+  description: Высоконагруженные системы - оптимизация производительности, масштабирование, шардирование, репликация и кэширование.
+
+sql:
+  label: SQL
+  permalink: /sql
+  description: Язык структурированных запросов и работа с реляционными базами данных. Оптимизация запросов и проектирование схем.
+
+dart:
+  label: Dart
+  permalink: /dart
+  description: Язык программирования от Google. Основной язык для разработки кроссплатформенных приложений на Flutter.
+
+crystal:
+  label: Crystal
+  permalink: /crystal
+  description: Язык программирования с синтаксисом Ruby и производительностью C. Компилируется в нативный код через LLVM.
+
+gleam:
+  label: Gleam
+  permalink: /gleam
+  description: Функциональный язык со статической типизацией, компилируемый в BEAM. Сочетает безопасность типов с производительностью Erlang.
+
+tauri:
+  label: Tauri
+  permalink: /tauri
+  description: Фреймворк для создания кроссплатформенных десктопных приложений. Использует веб-технологии для UI и Rust для бэкенда.
+
+zig:
+  label: Zig
+  permalink: /zig
+  description: Системный язык программирования. Акцент на простоте, безопасности и ручном управлении памятью без сборщика мусора.
+
+surrealdb:
+  label: SurrealDB
+  permalink: /surrealdb
+  description: Современная база данных с поддержкой документной и графовой моделей. Позволяет работать с данными через SQL-подобный язык SurrealQL.
+
+petproject:
+  label: Pet-Project
+  permalink: /pet-project
+  description: Личные проекты для изучения новых технологий и практики. Примеры реализации и опыт разработки.
+
+translation:
+  label: Translation
+  permalink: /translation
+  description: Переводы технических статей и книг на русский язык. Адаптация зарубежных материалов для русскоязычного сообщества.
+
+ai:
+  label: AI
+  permalink: /ai
+  description: Искусственный интеллект и его применение в разработке. Инструменты, LLM, интеграция AI в приложения.
+
+ml:
+  label: Машинное обучение
+  permalink: /ml
+  description: Машинное обучение и его применение в разработке. Библиотеки, модели и практические примеры использования.
+
+instruments:
+  label: Инструменты
+  permalink: /instruments
+  description: Инструменты разработки - IDE, утилиты, CLI-приложения и средства повышения продуктивности.
+
+blockchain:
+  label: Blockchain
+  permalink: /blockchain
+  description: Технология блокчейн - принципы работы, смарт-контракты, криптовалюты и децентрализованные приложения.
+
+algorithms:
+  label: Алгоритмы
+  permalink: /algorithms
+  description: Алгоритмы и структуры данных. Теория, реализация и применение в реальных задачах разработки.
+
+os:
+  label: ОС
+  permalink: /os
+  description: Операционные системы и системное программирование. Особенности работы с различными ОС и их настройка.
+
+ash:
+  label: Ash Framework
+  permalink: /ash
+  description: Мощный фреймворк для Elixir. Позволяет декларативно описывать ресурсы и автоматически генерировать API.
+
+datascience:
+  label: Data Science
+  permalink: /datascience
+  description: Наука о данных -анализ, визуализация и обработка данных с использованием Python и его библиотек.
+
+articles:
+  label: Статьи
+  permalink: /articles
+  description: Мои статьи и обзоры по разработке и технологиям.

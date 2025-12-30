@@ -7,7 +7,7 @@ import type * as Preset from "@docusaurus/preset-classic";
 const config: Config = {
   title: "Хендбук",
   tagline:
-    "Этот справочник предназначен для поддержки изучения актуальных технологических решений на 2026 год. Сейчас основное внимание уделяется двум направлениям: языку программирования Go и СУБД PostgreSQL, однако в будущем количество направлений будет расширено.",
+    "Этот справочник предназначен для поддержки изучения актуальных технологических решений на 2026 год. Сейчас основное внимание уделяется трём направлениям: языку программирования Go, СУБД PostgreSQL и языку Elixir.",
   favicon: "img/books.svg",
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
@@ -15,10 +15,7 @@ const config: Config = {
     v4: true, // Improve compatibility with the upcoming Docusaurus v4
   },
 
-  // Set the production url of your site here
   url: "https://adamanr.github.io/",
-  // Set the /<baseUrl>/ pathname under which your site is served
-  // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: "/Handbooks/",
 
   // GitHub pages deployment config.
@@ -28,9 +25,6 @@ const config: Config = {
   trailingSlash: false,
   onBrokenLinks: "throw",
 
-  // Even if you don't use internationalization, you can use this field to set
-  // useful metadata like html lang. For example, if your site is Chinese, you
-  // may want to replace "en" with "zh-Hans".
   i18n: {
     defaultLocale: "ru",
     locales: ["ru"],
@@ -60,15 +54,14 @@ const config: Config = {
             type: ["rss", "atom"],
             xslt: true,
           },
-          // Useful options to enforce blogging best practices
+          blogSidebarCount: "ALL",
+          blogSidebarTitle: "Все посты",
           onInlineTags: "warn",
           onInlineAuthors: "warn",
           onUntruncatedBlogPosts: "warn",
         },
         theme: {
           customCss: [
-            // not my styles. Taken from here:
-            // https://github.com/vendure-ecommerce/vendure/blob/cc4826dfb7c1a2f4e6ed8daa13eb017090d8bd9a/docs/src/css/custom.css
             require.resolve("./src/css/custom.css"),
             require.resolve("./src/css/layout.css"),
             require.resolve("./src/css/overrides.css"),
@@ -89,13 +82,38 @@ const config: Config = {
       },
     ],
     [
+      "@docusaurus/plugin-content-docs",
+      {
+        id: "elixir",
+        path: "docs-elixir",
+        routeBasePath: "elixir",
+        sidebarPath: "./elixirSidebar.ts",
+      },
+    ],
+    [
+      "@docusaurus/plugin-content-docs",
+      {
+        id: "k8s",
+        path: "docs-k8s",
+        routeBasePath: "k8s",
+        sidebarPath: "./kubernetesSidebar.ts",
+      },
+    ],
+    [
+      "@docusaurus/plugin-content-docs",
+      {
+        id: "rust",
+        path: "docs-rust",
+        routeBasePath: "rust",
+        sidebarPath: "./rustSidebar.ts",
+      },
+    ],
+    [
       "@gracefullight/docusaurus-plugin-yandex-metrica",
       { counterId: 106058654 },
     ],
   ],
-
   themeConfig: {
-    // Replace with your project's social card
     image: "img/books.svg",
     colorMode: {
       respectPrefersColorScheme: true,
@@ -108,23 +126,54 @@ const config: Config = {
       },
       items: [
         {
-          type: "docSidebar",
-          sidebarId: "goSidebar",
+          type: "dropdown",
+          label: "🖥️ Языки",
           position: "left",
-          label: "Go",
-          docsPluginId: "go",
+          items: [
+            {
+              type: "docSidebar",
+              sidebarId: "goSidebar",
+              label: "🦫 Go",
+              docsPluginId: "go",
+            },
+            {
+              type: "docSidebar",
+              sidebarId: "elixirSidebar",
+              label: "🧪 Elixir",
+              docsPluginId: "elixir",
+            },
+            {
+              type: "docSidebar",
+              sidebarId: "rustSidebar",
+              label: "🦀 Rust",
+              docsPluginId: "rust",
+            },
+          ],
         },
         {
-          type: "docSidebar",
-          sidebarId: "postgresSidebar",
+          type: "dropdown",
+          label: "📦 Технологии",
           position: "left",
-          label: "PostgreSQL",
-          docsPluginId: "postgresql",
+          items: [
+            {
+              type: "docSidebar",
+              sidebarId: "postgresSidebar",
+              label: "🐘 PostgreSQL",
+              docsPluginId: "postgresql",
+            },
+            {
+              type: "docSidebar",
+              sidebarId: "kubernetesSidebar",
+              label: "🐳☸️ Контейнеризация",
+              docsPluginId: "k8s",
+            },
+          ],
         },
-        { to: "/blog", label: "Блог", position: "right" },
+        { to: "/blog", label: "📝 Блог", position: "right" },
+        { to: "/about", label: "👨 Обо мне", position: "right" },
         {
           href: "https://github.com/Adamanr/Handbooks/issues",
-          label: "Нашли ошибку?",
+          label: "🐛 Нашли ошибку?",
           position: "right",
         },
       ],
@@ -143,6 +192,14 @@ const config: Config = {
               label: "PostgreSQL",
               to: "/postgresql/category/postgresql-основы",
             },
+            {
+              label: "Elixir",
+              to: "/elixir/category/elixir-основы",
+            },
+            {
+              label: "Контейнеризация",
+              to: "/containerization/category/containerization-основы",
+            },
           ],
         },
         {
@@ -155,6 +212,14 @@ const config: Config = {
             {
               label: "GitHub Автора",
               href: "https://github.com/Adamanr",
+            },
+            {
+              label: "Telegram канал",
+              href: "https://t.me/digital_tent",
+            },
+            {
+              label: "Telegram автора",
+              href: "https://t.me/adamanq",
             },
           ],
         },
@@ -174,6 +239,7 @@ const config: Config = {
       theme: prismThemes.github,
       darkTheme: prismThemes.dracula,
     },
+    clientModules: [require.resolve("./src/clientModules/giscusReload.ts")],
   } satisfies Preset.ThemeConfig,
 };
 

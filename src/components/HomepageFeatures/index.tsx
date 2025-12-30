@@ -41,6 +41,39 @@ const FeatureList: FeatureItem[] = [
     ),
     link: "postgresql/category/postgresql-основы",
   },
+  {
+    title: "Курс по Elixir",
+    shortTitle: "Elixir",
+    Svg: require("@site/static/img/elixir.svg").default,
+    description: (
+      <>
+        Курс посвящен изучению основ языка программирования Elixir, правильному
+        написанию функционального кода, принципам параллелизма и
+        профессиональному подходу к созданию масштабируемых приложений. Мы
+        рассмотрим такие важные темы, как работа с параллелизмом и
+        конкурентностью, управление процессами OTP, отказоустойчивость и многое
+        другое!
+      </>
+    ),
+    link: "elixir/category/elixir-основы",
+  },
+  {
+    title: "Курс по контейнеризации",
+    shortTitle: "containerization",
+    Svg: require("@site/static/img/kubernetes.svg").default,
+    description: (
+      <>
+        Курс посвящен изучению современных технологий контейнеризации,
+        правильному созданию и управлению контейнерами, оркестрации приложений и
+        профессиональному подходу к построению надёжных, масштабируемых и
+        переносимых систем. Мы рассмотрим такие важные темы, как работа с Docker
+        и Podman, создание образов, управление контейнерами, основы Kubernetes
+        (k8s), развертывание приложений в кластере, управление конфигурациями и
+        секретами, мониторинг, масштабирование и многое другое!
+      </>
+    ),
+    link: "containerization/category/docker-основы",
+  },
 ];
 
 function Feature({ title, Svg, description, link, shortTitle }: FeatureItem) {
@@ -50,7 +83,9 @@ function Feature({ title, Svg, description, link, shortTitle }: FeatureItem) {
         <Svg className={styles.featureSvg} role="img" />
       </div>
       <div className="text--center padding-horiz--md">
-        <Heading as="h3">{title}</Heading>
+        <Heading className={styles.mY2} as="h3">
+          {title}
+        </Heading>
         <p>{description}</p>
         <br />
         <div className={styles.buttons}>
@@ -60,6 +95,7 @@ function Feature({ title, Svg, description, link, shortTitle }: FeatureItem) {
         </div>
         <br />
       </div>
+      <br />
     </div>
   );
 }
@@ -68,7 +104,14 @@ export default function HomepageFeatures(): ReactNode {
   return (
     <section className={styles.features}>
       <div className="">
-        <div className="row">
+        <div
+          className={clsx(
+            styles.grid,
+            styles.gridCols2,
+            styles.gapX8,
+            styles.gapY8,
+          )}
+        >
           {FeatureList.map((props, idx) => (
             <Feature key={idx} {...props} />
           ))}
