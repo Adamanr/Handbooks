@@ -6,20 +6,7 @@ description: "Практические задания по основам син
 # Практические задания: Основы синтаксиса
 
 import { useState } from 'react';
-
-export const CodeBlock = ({ children }) => {
-    return (
-        <div>
-            <br />
-            <iframe
-                src="https://goplay.tools/snippet/VRAOHHr3xO4"
-                width="100%"
-                height="600"
-                frameborder="0"
-            ></iframe>
-        </div>
-    );
-};
+import { CodeBlock } from '../../src/components/GoPlayground'
 
 export const RandomVariantButton = ({ variants, onSelect, selectedVariant }) => {
     const handleRandom = () => {
@@ -97,16 +84,9 @@ export const TaskWithVariants = ({ title, description, variants, children }) => 
 
 ## Компилятор для работы с кодом
 
-В данном компиляторе вы можете запускать код на языке Go и видеть результаты выполнения в реальном времени. Это полезно для проверки и отладки кода, а также для изучения работы синтаксиса и стандартной библиотеки языка. Вы также можете создавать там несколько файлов, чтобы показывать задания или делиться ссылкой на код.
+В данном компиляторе вы можете запускать код на языке Go и видеть результаты выполнения в реальном времени. Это полезно для проверки и отладки кода, а также для изучения работы синтаксиса и стандартной библиотеки языка.
 
-<CodeBlock>
-    <iframe
-        src="https://goplay.tools/snippet/VRAOHHr3xO4"
-        width="100%"
-        height="600"
-        frameborder="0"
-    ></iframe>
-</CodeBlock>
+<CodeBlock />
 
 ## Задание 1: Работа с переменными и типами
 
