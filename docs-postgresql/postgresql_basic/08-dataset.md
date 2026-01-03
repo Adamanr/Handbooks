@@ -262,7 +262,6 @@ ORDER BY month;
 
 > **DATE_TRUNC** — функция в PostgreSQL, которая обрезает дату или время до указанной точности. Это полезно для работы с данными, связанными с временем, — функция позволяет группировать или агрегировать данные на разных уровнях времени. 
 
-
 ### GROUP BY с несколькими столбцами
 
 ```sql
@@ -977,5 +976,603 @@ INSERT INTO customers (name, email, city, registered_at) VALUES
 INSERT INTO products (name, category, price) VALUES 
     ('iPhone 15', 'Электроника', 89990),
     ('MacBook Pro', 'Электроника', 199990),
-    ('AirPods
-  ```
+    ('AirPods Pro', 'Электроника', 24990),
+    ('iPad Air', 'Электроника', 64990),
+    ('Диван', 'Мебель', 45000),
+    ('Стол', 'Мебель', 15000),
+    ('Кресло', 'Мебель', 12000),
+    ('Футболка', 'Одежда', 1500),
+    ('Джинсы', 'Одежда', 4500),
+    ('Кроссовки', 'Одежда', 8500);
+
+INSERT INTO orders (customer_id, order_date, status) VALUES 
+    (1, '2024-01-10', 'delivered'),
+    (1, '2024-01-25', 'delivered'),
+    (2, '2024-01-20', 'delivered'),
+    (3, '2024-02-01', 'delivered'),
+    (3, '2024-02-15', 'shipped'),
+    (4, '2024-02-05', 'delivered'),
+    (5, '2024-02-20', 'pending'),
+    (1, '2024-03-01', 'delivered');
+
+INSERT INTO order_items (order_id, product_id, quantity, price) VALUES 
+    (1, 1, 1, 89990),  -- Алиса: iPhone
+    (1, 3, 1, 24990),  -- Алиса: AirPods
+    (2, 5, 1, 45000),  -- Алиса: Диван
+    (3, 2, 1, 199990), -- Боб: MacBook
+    (4, 4, 1, 64990),  -- Чарли: iPad
+    (4, 8, 2, 1500),   -- Чарли: 2 футболки
+    (5, 6, 1, 15000),  -- Чарли: Стол
+    (5, 7, 1, 12000),  -- Чарли: Кресло
+    (6, 9, 1, 4500),   -- Диана: Джинсы
+    (6, 10, 1, 8500),  -- Диана: Кроссовки
+    (7, 3, 2, 24990),  -- Ева: 2 AirPods
+    (8, 8, 5, 1500);   -- Алиса: 5 футболок
+```
+
+**Теперь выполните следующие аналитические запросы:**
+
+**1. Общая статистика:**
+```sql
+SELECT 
+    COUNT(DISTINCT c.id) AS total_customers,
+    COUNT(DISTINCT o.id) AS total_orders,
+    COUNT(*) AS total_items,
+    SUM(oi.quantity * oi.price) AS total_revenue,
+    AVG(oi.quantity * oi.price) AS avg_item_value
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id
+LEFT JOIN order_items oi ON o.id = oi.order_id;
+```
+
+**2. Топ-5 клиентов по выручке:**
+```sql
+SELECT 
+    c.name,
+    c.city,
+    COUNT(DISTINCT o.id) AS order_count,
+    SUM(oi.quantity * oi.price) AS total_spent,
+    ROUND(AVG(oi.quantity * oi.price), 2) AS avg_order_value
+FROM customers c
+JOIN orders o ON c.id = o.customer_id
+JOIN order_items oi ON o.id = oi.order_id
+WHERE o.status = 'delivered'
+GROUP BY c.id, c.name, c.city
+ORDER BY total_spent DESC
+LIMIT 5;
+```
+
+**3. Статистика по категориям:**
+```sql
+SELECT 
+    p.category,
+    COUNT(DISTINCT p.id) AS products_count,
+    COUNT(DISTINCT oi.order_id) AS orders_with_category,
+    SUM(oi.quantity) AS units_sold,
+    SUM(oi.quantity * oi.price) AS category_revenue,
+    ROUND(AVG(oi.quantity * oi.price), 2) AS avg_item_price
+FROM products p
+LEFT JOIN order_items oi ON p.id = oi.product_id
+GROUP BY p.category
+ORDER BY category_revenue DESC;
+```
+
+**4. Клиенты без заказов:**
+```sql
+SELECT 
+    c.name,
+    c.email,
+    c.city,
+    c.registered_at
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id
+WHERE o.id IS NULL;
+```
+
+**5. Динамика продаж по месяцам:**
+```sql
+SELECT 
+    DATE_TRUNC('month', o.order_date) AS month,
+    COUNT(DISTINCT o.id) AS orders_count,
+    SUM(oi.quantity * oi.price) AS monthly_revenue,
+    COUNT(DISTINCT o.customer_id) AS unique_customers
+FROM orders o
+JOIN order_items oi ON o.id = oi.order_id
+WHERE o.status = 'delivered'
+GROUP BY DATE_TRUNC('month', o.order_date)
+ORDER BY month;
+```
+
+**6. Накопительная выручка:**
+```sql
+SELECT 
+    o.order_date,
+    o.id AS order_id,
+    SUM(oi.quantity * oi.price) AS order_total,
+    SUM(SUM(oi.quantity * oi.price)) OVER (
+        ORDER BY o.order_date, o.id
+    ) AS cumulative_revenue
+FROM orders o
+JOIN order_items oi ON o.id = oi.order_id
+WHERE o.status = 'delivered'
+GROUP BY o.id, o.order_date
+ORDER BY o.order_date;
+```
+
+**7. Ранжирование продуктов по продажам:**
+```sql
+SELECT 
+    p.name,
+    p.category,
+    SUM(oi.quantity) AS units_sold,
+    SUM(oi.quantity * oi.price) AS revenue,
+    RANK() OVER (
+        PARTITION BY p.category 
+        ORDER BY SUM(oi.quantity * oi.price) DESC
+    ) AS rank_in_category
+FROM products p
+LEFT JOIN order_items oi ON p.id = oi.product_id
+GROUP BY p.id, p.name, p.category
+ORDER BY p.category, rank_in_category;
+```
+
+**8. Сравнение с предыдущим заказом клиента:**
+```sql
+SELECT 
+    c.name,
+    o.order_date,
+    SUM(oi.quantity * oi.price) AS order_total,
+    LAG(SUM(oi.quantity * oi.price)) OVER (
+        PARTITION BY c.id 
+        ORDER BY o.order_date
+    ) AS previous_order_total,
+    SUM(oi.quantity * oi.price) - LAG(SUM(oi.quantity * oi.price)) OVER (
+        PARTITION BY c.id 
+        ORDER BY o.order_date
+    ) AS difference
+FROM customers c
+JOIN orders o ON c.id = o.customer_id
+JOIN order_items oi ON o.id = oi.order_id
+WHERE o.status = 'delivered'
+GROUP BY c.id, c.name, o.id, o.order_date
+ORDER BY c.name, o.order_date;
+```
+
+---
+
+### Задание 2: Когортный анализ (обязательно)
+
+**1. Определение когорт (по месяцу первого заказа):**
+```sql
+WITH customer_cohorts AS (
+    SELECT 
+        c.id AS customer_id,
+        c.name,
+        DATE_TRUNC('month', MIN(o.order_date)) AS cohort_month
+    FROM customers c
+    JOIN orders o ON c.id = o.customer_id
+    WHERE o.status = 'delivered'
+    GROUP BY c.id, c.name
+)
+SELECT 
+    cohort_month,
+    COUNT(*) AS customers_count
+FROM customer_cohorts
+GROUP BY cohort_month
+ORDER BY cohort_month;
+```
+
+**2. Активность когорт по месяцам:**
+```sql
+WITH customer_cohorts AS (
+    SELECT 
+        c.id AS customer_id,
+        DATE_TRUNC('month', MIN(o.order_date)) AS cohort_month
+    FROM customers c
+    JOIN orders o ON c.id = o.customer_id
+    WHERE o.status = 'delivered'
+    GROUP BY c.id
+),
+cohort_activity AS (
+    SELECT 
+        cc.cohort_month,
+        DATE_TRUNC('month', o.order_date) AS activity_month,
+        COUNT(DISTINCT o.customer_id) AS active_customers
+    FROM customer_cohorts cc
+    JOIN orders o ON cc.customer_id = o.customer_id
+    WHERE o.status = 'delivered'
+    GROUP BY cc.cohort_month, DATE_TRUNC('month', o.order_date)
+)
+SELECT 
+    cohort_month,
+    activity_month,
+    active_customers,
+    EXTRACT(MONTH FROM AGE(activity_month, cohort_month)) AS months_since_first_order
+FROM cohort_activity
+ORDER BY cohort_month, activity_month;
+```
+
+**3. Retention rate (процент удержания):**
+```sql
+WITH customer_cohorts AS (
+    SELECT 
+        c.id AS customer_id,
+        DATE_TRUNC('month', MIN(o.order_date)) AS cohort_month
+    FROM customers c
+    JOIN orders o ON c.id = o.customer_id
+    WHERE o.status = 'delivered'
+    GROUP BY c.id
+),
+cohort_sizes AS (
+    SELECT 
+        cohort_month,
+        COUNT(*) AS cohort_size
+    FROM customer_cohorts
+    GROUP BY cohort_month
+),
+cohort_activity AS (
+    SELECT 
+        cc.cohort_month,
+        DATE_TRUNC('month', o.order_date) AS activity_month,
+        COUNT(DISTINCT o.customer_id) AS active_customers
+    FROM customer_cohorts cc
+    JOIN orders o ON cc.customer_id = o.customer_id
+    WHERE o.status = 'delivered'
+    GROUP BY cc.cohort_month, DATE_TRUNC('month', o.order_date)
+)
+SELECT 
+    ca.cohort_month,
+    ca.activity_month,
+    cs.cohort_size,
+    ca.active_customers,
+    ROUND(ca.active_customers * 100.0 / cs.cohort_size, 2) AS retention_rate
+FROM cohort_activity ca
+JOIN cohort_sizes cs ON ca.cohort_month = cs.cohort_month
+ORDER BY ca.cohort_month, ca.activity_month;
+```
+
+---
+
+### Задание 3: ABC-анализ (дополнительно)
+
+Классификация клиентов/товаров по выручке:
+- **A** — 80% выручки (VIP)
+- **B** — следующие 15%
+- **C** — последние 5%
+
+```sql
+WITH customer_revenue AS (
+    SELECT 
+        c.id,
+        c.name,
+        SUM(oi.quantity * oi.price) AS total_revenue
+    FROM customers c
+    JOIN orders o ON c.id = o.customer_id
+    JOIN order_items oi ON o.id = oi.order_id
+    WHERE o.status = 'delivered'
+    GROUP BY c.id, c.name
+),
+revenue_with_cumulative AS (
+    SELECT 
+        id,
+        name,
+        total_revenue,
+        SUM(total_revenue) OVER () AS total_all_revenue,
+        SUM(total_revenue) OVER (ORDER BY total_revenue DESC) AS cumulative_revenue,
+        ROW_NUMBER() OVER (ORDER BY total_revenue DESC) AS rank
+    FROM customer_revenue
+)
+SELECT 
+    name,
+    total_revenue,
+    rank,
+    ROUND(cumulative_revenue * 100.0 / total_all_revenue, 2) AS cumulative_percent,
+    CASE 
+        WHEN cumulative_revenue * 100.0 / total_all_revenue <= 80 THEN 'A'
+        WHEN cumulative_revenue * 100.0 / total_all_revenue <= 95 THEN 'B'
+        ELSE 'C'
+    END AS abc_category
+FROM revenue_with_cumulative
+ORDER BY rank;
+```
+
+---
+
+## Контрольные вопросы
+
+Проверьте себя:
+
+1. Какие агрегатные функции вы знаете?
+2. В чем разница между COUNT(*) и COUNT(column)?
+3. Что делает GROUP BY?
+4. Все ли столбцы SELECT должны быть в GROUP BY?
+5. В чем разница между WHERE и HAVING?
+6. Что делает UNION и UNION ALL?
+7. Что такое подзапрос и где его можно использовать?
+8. В чем отличие GROUP BY от оконных функций?
+9. Что делает ROW_NUMBER()?
+10. Какая разница между RANK() и DENSE_RANK()?
+11. Что такое PARTITION BY в оконных функциях?
+12. Как посчитать накопительную сумму?
+
+<details>
+<summary>Ответы</summary>
+
+1. COUNT, SUM, AVG, MIN, MAX, STRING_AGG и др.
+2. COUNT(*) считает все строки, COUNT(column) игнорирует NULL.
+3. Группирует строки с одинаковыми значениями для агрегации.
+4. Да, все неагрегатные столбцы должны быть в GROUP BY.
+5. WHERE фильтрует строки до группировки, HAVING — группы после.
+6. UNION объединяет результаты и удаляет дубликаты, UNION ALL оставляет все.
+7. SELECT внутри SELECT. В WHERE, SELECT, FROM, HAVING.
+8. GROUP BY сворачивает строки, оконные функции сохраняют все строки.
+9. Присваивает уникальный номер каждой строке.
+10. RANK пропускает номера при одинаковых значениях, DENSE_RANK — нет.
+11. Определяет группы для оконной функции (как GROUP BY, но без сворачивания).
+12. SUM(column) OVER (ORDER BY date).
+</details>
+
+---
+
+## Типичные ошибки и их решения
+
+### Ошибка 1: Столбец не в GROUP BY
+
+```sql
+-- ❌ ОШИБКА
+SELECT 
+    customer_id,
+    product,           -- Не в GROUP BY!
+    COUNT(*) AS count
+FROM orders
+GROUP BY customer_id;
+
+-- ✅ РЕШЕНИЕ 1: добавить в GROUP BY
+SELECT 
+    customer_id,
+    product,
+    COUNT(*) AS count
+FROM orders
+GROUP BY customer_id, product;
+
+-- ✅ РЕШЕНИЕ 2: использовать агрегатную функцию
+SELECT 
+    customer_id,
+    STRING_AGG(DISTINCT product, ', ') AS products,
+    COUNT(*) AS count
+FROM orders
+GROUP BY customer_id;
+```
+
+### Ошибка 2: WHERE вместо HAVING
+
+```sql
+-- ❌ ОШИБКА: нельзя использовать агрегатную функцию в WHERE
+SELECT customer_id, COUNT(*) AS cnt
+FROM orders
+GROUP BY customer_id
+WHERE COUNT(*) > 2;  -- Ошибка!
+
+-- ✅ ПРАВИЛЬНО: использовать HAVING
+SELECT customer_id, COUNT(*) AS cnt
+FROM orders
+GROUP BY customer_id
+HAVING COUNT(*) > 2;
+```
+
+### Ошибка 3: Неправильное использование DISTINCT
+
+```sql
+-- ❌ ПЛОХО: может дать неправильный результат
+SELECT 
+    customer_id,
+    COUNT(DISTINCT product) AS unique_products,
+    COUNT(DISTINCT status) AS unique_statuses
+FROM orders
+JOIN order_items ON orders.id = order_items.order_id
+GROUP BY customer_id;
+-- JOIN может умножить строки!
+
+-- ✅ ЛУЧШЕ: использовать подзапросы или CTE
+WITH customer_products AS (
+    SELECT DISTINCT customer_id, product_id
+    FROM orders o
+    JOIN order_items oi ON o.id = oi.order_id
+)
+SELECT 
+    customer_id,
+    COUNT(*) AS unique_products
+FROM customer_products
+GROUP BY customer_id;
+```
+
+### Ошибка 4: Забыли про NULL в агрегатах
+
+```sql
+-- AVG игнорирует NULL
+CREATE TABLE test (value INTEGER);
+INSERT INTO test VALUES (100), (200), (NULL);
+
+SELECT AVG(value) FROM test;
+-- Результат: 150 (не 100!)
+
+-- Если нужно учесть NULL как 0:
+SELECT AVG(COALESCE(value, 0)) FROM test;
+-- Результат: 100
+```
+
+### Ошибка 5: Неправильный порядок в UNION
+
+```sql
+-- ❌ ОШИБКА: разное количество столбцов
+SELECT id, name FROM customers
+UNION
+SELECT id FROM orders;  -- Только один столбец!
+
+-- ✅ ПРАВИЛЬНО: одинаковое количество
+SELECT id, name FROM customers
+UNION
+SELECT id, CAST(id AS VARCHAR) FROM orders;
+```
+
+---
+
+## Шпаргалка по работе с наборами
+
+```sql
+-- АГРЕГАТНЫЕ ФУНКЦИИ
+COUNT(*), COUNT(column), COUNT(DISTINCT column)
+SUM(column), AVG(column), MIN(column), MAX(column)
+STRING_AGG(column, delimiter)
+
+-- GROUP BY
+SELECT column, aggregate_function(column2)
+FROM table
+GROUP BY column;
+
+-- HAVING
+SELECT column, COUNT(*)
+FROM table
+GROUP BY column
+HAVING COUNT(*) > 10;
+
+-- UNION
+SELECT ... FROM table1
+UNION [ALL]
+SELECT ... FROM table2;
+
+-- INTERSECT
+SELECT ... FROM table1
+INTERSECT
+SELECT ... FROM table2;
+
+-- EXCEPT
+SELECT ... FROM table1
+EXCEPT
+SELECT ... FROM table2;
+
+-- ПОДЗАПРОСЫ
+WHERE column IN (SELECT ...)
+WHERE column > (SELECT AVG(...) FROM ...)
+FROM (SELECT ... FROM ...) AS subquery
+
+-- ОКОННЫЕ ФУНКЦИИ
+ROW_NUMBER() OVER (PARTITION BY col ORDER BY col2)
+RANK() OVER (ORDER BY col)
+SUM(col) OVER (ORDER BY date)  -- Накопительная сумма
+LAG(col) OVER (ORDER BY date)  -- Предыдущее значение
+LEAD(col) OVER (ORDER BY date) -- Следующее значение
+```
+
+---
+
+## Лучшие практики
+
+### 1. Используйте CTE для читабельности
+
+```sql
+-- ✅ ХОРОШО: с CTE
+WITH monthly_revenue AS (
+    SELECT 
+        DATE_TRUNC('month', order_date) AS month,
+        SUM(total) AS revenue
+    FROM orders
+    GROUP BY DATE_TRUNC('month', order_date)
+)
+SELECT 
+    month,
+    revenue,
+    revenue - LAG(revenue) OVER (ORDER BY month) AS growth
+FROM monthly_revenue;
+
+-- ❌ ПЛОХО: вложенные подзапросы
+SELECT 
+    month,
+    revenue,
+    revenue - LAG(revenue) OVER (ORDER BY month) AS growth
+FROM (
+    SELECT 
+        DATE_TRUNC('month', order_date) AS month,
+        SUM(total) AS revenue
+    FROM orders
+    GROUP BY DATE_TRUNC('month', order_date)
+) AS subquery;
+```
+
+### 2. Давайте понятные псевдонимы
+
+```sql
+-- ✅ ХОРОШО
+SELECT 
+    COUNT(*) AS total_orders,
+    SUM(amount) AS total_revenue,
+    AVG(amount) AS average_order_value
+FROM orders;
+
+-- ❌ ПЛОХО
+SELECT 
+    COUNT(*) AS cnt,
+    SUM(amount) AS sum,
+    AVG(amount) AS avg
+FROM orders;
+```
+
+### 3. Комментируйте сложные запросы
+
+```sql
+-- Когортный анализ: retention rate по месяцам
+WITH customer_cohorts AS (
+    -- Определяем месяц первого заказа (когорту) каждого клиента
+    SELECT ...
+),
+cohort_activity AS (
+    -- Считаем активных клиентов каждой когорты по месяцам
+    SELECT ...
+)
+-- Рассчитываем процент удержания
+SELECT ...
+```
+
+### 4. Используйте EXPLAIN для оптимизации
+
+```sql
+EXPLAIN ANALYZE
+SELECT 
+    customer_id,
+    COUNT(*) AS order_count
+FROM orders
+GROUP BY customer_id
+HAVING COUNT(*) > 5;
+```
+
+### 5. Округляйте финансовые данные
+
+```sql
+-- ✅ ХОРОШО
+SELECT 
+    ROUND(AVG(price), 2) AS avg_price,
+    ROUND(SUM(price), 2) AS total
+FROM products;
+
+-- ❌ ПЛОХО: слишком много знаков
+SELECT 
+    AVG(price) AS avg_price  -- 1234.5678901234
+FROM products;
+```
+
+---
+
+## Полезные ресурсы
+
+**Документация:**
+- https://www.postgresql.org/docs/current/functions-aggregate.html
+- https://www.postgresql.org/docs/current/queries-table-expressions.html
+- https://www.postgresql.org/docs/current/tutorial-window.html
+
+**Практика:**
+- Mode Analytics SQL Tutorial (оконные функции)
+- PostgreSQL Exercises (grouping section)
+- LeetCode Database Problems
+
+**Визуализация:**
+- Explain.depesz.com — визуализация EXPLAIN
