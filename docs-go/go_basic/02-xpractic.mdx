@@ -8,6 +8,14 @@ description: "Практические задания по основам син
 import { useState } from 'react';
 import { CodeBlock } from '../../src/components/GoPlayground'
 
+export const TestCodeBlock = ({ code, language }) => {
+    return (
+        <div>
+
+        </div>
+    );
+};
+
 export const RandomVariantButton = ({ variants, onSelect, selectedVariant }) => {
     const handleRandom = () => {
         const randomIndex = Math.floor(Math.random() * variants.length);
@@ -36,6 +44,8 @@ export const RandomVariantButton = ({ variants, onSelect, selectedVariant }) => 
                     Выбран вариант {selectedVariant + 1}
                 </span>
             )}
+
+
         </div>
     );
 };
