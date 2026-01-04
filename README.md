@@ -4,7 +4,7 @@
 
 [![Docusaurus](https://img.shields.io/badge/Powered%20by-Docusaurus-3DDC84?logo=docusaurus&logoColor=white)](https://docusaurus.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![GitHub Stars](https://img.shields.io/github/stars/yourusername/Handbooks?style=flat-square)](https://github.com/yourusername/Handbooks/stargazers)
+[![GitHub Stars](https://img.shields.io/github/stars/adamanr/Handbooks?style=flat-square)](https://github.com/adamanr/Handbooks/stargazers)
 
 *Открытый хендбук для изучения языков программирования и технологий*
 
@@ -22,7 +22,6 @@
 
 Каждый хендбук написан с нуля и постоянно улучшается с учётом обратной связи от сообщества.
 
-<br>
 <br>
 
 ## 📚 Доступные хендбуки
