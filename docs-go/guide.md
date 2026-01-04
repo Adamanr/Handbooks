@@ -3,7 +3,7 @@ sidebar_position: 2
 title: Гайд по изучению Go
 ---
 
-![Картинка](https://adamanr.github.io/blog/images/posts/image_32.jpg)
+![Картинка](https://adamanr.github.io/handbooks/img/posts/image_32.jpg)
 
 # **Полное руководство по изучению Go и становлению профессиональным разработчиком**
 
