@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 6
 description: "В этом уроке мы изучим условные конструкции и циклы."
 ---
 

@@ -1,5 +1,5 @@
 ---
-sidebar_position: 5
+sidebar_position: 8
 description: "В этом уроке мы изучим работу с массивами, слайсами и картами."
 ---
 

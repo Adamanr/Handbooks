@@ -1,5 +1,5 @@
 ---
-sidebar_position: 12
+sidebar_position: 22
 description: "В этом уроке мы научимся работать с базами данных PostgreSQL в Go с использованием пакета pgx."
 ---
 

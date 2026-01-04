@@ -1,5 +1,5 @@
 ---
-sidebar_position: 6
+sidebar_position: 10
 description: "В этом уроке мы изучим работу со структурами и интерфейсами."
 ---
 

@@ -1,5 +1,5 @@
 ---
-sidebar_position: 8
+sidebar_position: 14
 description: "В этом уроке мы изучим работу с файлами и вводом-выводом."
 ---
 

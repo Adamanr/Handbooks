@@ -1,5 +1,5 @@
 ---
-sidebar_position: 10
+sidebar_position: 18
 description: "В этом уроке мы изучим работу с пакетами, модулями и организацией проекта."
 ---
 

@@ -1,5 +1,5 @@
 ---
-sidebar_position: 7
+sidebar_position: 12
 description: "В этом уроке мы изучим обработку ошибок и паники."
 ---
 
