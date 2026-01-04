@@ -112,6 +112,12 @@ const config: Config = {
       "@gracefullight/docusaurus-plugin-yandex-metrica",
       { counterId: 106058654 },
     ],
+    [
+      "@cmfcmf/docusaurus-search-local",
+      {
+        language: ["ru", "en"],
+      },
+    ],
   ],
   themeConfig: {
     image: "img/books.svg",
