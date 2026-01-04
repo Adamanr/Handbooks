@@ -44,9 +44,68 @@ export const RandomVariantButton = ({
   );
 };
 
-export const CodeBlock = ({ children }) => {
+export const CodeBlockGo = ({ children }) => {
   return (
     <div>
+      <br />
+      <h2> Онлайн редактор кода для Go</h2>
+      <p>
+        Здесь вы можете попробовать свои силы в программировании на языке Go.
+        Для этого мы предоставляем вам онлайн редактор кода, в котором вы можете
+        написать свой код и запустить его.
+      </p>
+      <blockquote>
+        ❗️ При обновлении страницы код пропадёт, по этому, сохраните свой код
+        куда-нибудь, если он важный.
+      </blockquote>
+      <br />
+      <iframe
+        src="https://codapi.org/embed/?sandbox=go&code=data%3A%3Bbase64%2CLcwxCsMwDEbhXaf4KyjYEHqOjNm6dDGpbExtOTjqVHL3YvDwxvcdYf%2BEJKghK1GuR%2BsGjtWYKH51R%2Boi5jRUwWk9a%2FL4EYARYrXH1rNadLxKKW3B%2Fby9lBeMw9M1lcG7eU6Sn62XN3u6%2Fg%3D%3D"
+        width="100%"
+        height="600"
+      ></iframe>
+    </div>
+  );
+};
+
+export const CodeBlockGoPostgres = ({ children }) => {
+  return (
+    <div>
+      <br />
+      <h2> Онлайн редактор кода для PostgreSQL</h2>
+      <p>
+        Здесь вы можете попробовать свои силы в программировании на языке SQL
+        для работы с PostgreSQL. Для этого мы предоставляем вам онлайн редактор
+        кода, в котором вы можете написать свой код и запустить его.
+      </p>
+      <blockquote>
+        ❗️ При обновлении страницы код пропадёт, по этому, сохраните свой код
+        куда-нибудь, если он важный.
+      </blockquote>
+      <br />
+      <iframe
+        src="https://codapi.org/embed/?sandbox=postgres&code=data%3A%3Bbase64%2CK07NSU0uUVD3SM3JyddRCM8vyklRVFdILFbITS0uTkxPtQYA"
+        width="100%"
+        height="600"
+      ></iframe>
+    </div>
+  );
+};
+
+export const CodeBlockGoMongoDB = ({ children }) => {
+  return (
+    <div>
+      <br />
+      <h2> Онлайн редактор кода для MongoDB</h2>
+      <p>
+        Здесь вы можете попробовать свои силы в программировании на языке Go.
+        Для этого мы предоставляем вам онлайн редактор кода, в котором вы можете
+        написать свой код и запустить его.
+      </p>
+      <blockquote>
+        ❗️ При обновлении страницы код пропадёт, по этому, сохраните свой код
+        куда-нибудь, если он важный.
+      </blockquote>
       <br />
       <iframe
         src="https://codapi.org/embed/?sandbox=go&code=data%3A%3Bbase64%2CLcwxCsMwDEbhXaf4KyjYEHqOjNm6dDGpbExtOTjqVHL3YvDwxvcdYf%2BEJKghK1GuR%2BsGjtWYKH51R%2Boi5jRUwWk9a%2FL4EYARYrXH1rNadLxKKW3B%2Fby9lBeMw9M1lcG7eU6Sn62XN3u6%2Fg%3D%3D"
