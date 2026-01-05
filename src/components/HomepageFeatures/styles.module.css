@@ -1,13 +1,40 @@
 .features {
     display: flex;
     align-items: center;
-    padding: 2rem 0;
+    padding: 2rem 1rem;
     width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+@media screen and (max-width: 768px) {
+    .features {
+        padding: 1.5rem 1rem;
+    }
 }
 
 .featureSvg {
     height: 200px;
     width: 200px;
+    transition: transform 0.3s ease;
+}
+
+@media screen and (max-width: 996px) {
+    .featureSvg {
+        height: 150px;
+        width: 150px;
+    }
+}
+
+@media screen and (max-width: 768px) {
+    .featureSvg {
+        height: 120px;
+        width: 120px;
+    }
+}
+
+.featureSvg:hover {
+    transform: scale(1.05);
 }
 
 .block {
@@ -18,14 +45,23 @@
 /* Основной грид-контейнер */
 .grid {
     display: grid;
+    width: 100%;
 }
 
 /* Количество колонок */
 .gridCols1 {
     grid-template-columns: repeat(1, minmax(0, 1fr));
 }
+
 .gridCols2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Адаптивность для grid */
+@media screen and (max-width: 996px) {
+    .gridCols2 {
+        grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
 }
 
 /* Отступы между элементами (gap) */
@@ -61,6 +97,12 @@
     gap: 2rem;
 } /* 32px */
 
+@media screen and (max-width: 768px) {
+    .gap8 {
+        gap: 1.5rem;
+    }
+}
+
 .gap10 {
     gap: 2.5rem;
 } /* 40px */
@@ -90,6 +132,12 @@
     column-gap: 2rem;
 }
 
+@media screen and (max-width: 768px) {
+    .gapX8 {
+        column-gap: 1rem;
+    }
+}
+
 .gapY0 {
     row-gap: 0;
 }
@@ -106,9 +154,22 @@
     row-gap: 2rem;
 }
 
+@media screen and (max-width: 768px) {
+    .gapY8 {
+        row-gap: 1.5rem;
+    }
+}
+
 .mY2 {
     margin-top: 2rem;
     margin-bottom: 2rem;
+}
+
+@media screen and (max-width: 768px) {
+    .mY2 {
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+    }
 }
 
 .mY4 {
@@ -139,4 +200,48 @@
 .mY16 {
     margin-top: 16rem;
     margin-bottom: 16rem;
+}
+
+/* Стили для кнопок */
+.buttons {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+@media screen and (max-width: 768px) {
+    .buttons {
+        width: 100%;
+    }
+
+    .buttons .button {
+        width: 100%;
+        max-width: 100%;
+    }
+}
+
+/* Контейнер для карточки курса */
+.featureCard {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 1rem;
+}
+
+@media screen and (max-width: 768px) {
+    .featureCard {
+        padding: 0.5rem;
+    }
+}
+
+/* Адаптивная типографика */
+@media screen and (max-width: 768px) {
+    .features h3 {
+        font-size: 1.5rem;
+    }
+
+    .features p {
+        font-size: 0.95rem;
+        line-height: 1.6;
+    }
 }

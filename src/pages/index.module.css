@@ -4,20 +4,71 @@
  */
 
 .heroBanner {
-  padding: 4rem 0;
-  text-align: center;
-  position: relative;
-  overflow: hidden;
+    padding: 4rem 2rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
 }
 
+/* Tablet */
 @media screen and (max-width: 996px) {
-  .heroBanner {
-    padding: 2rem;
-  }
+    .heroBanner {
+        padding: 3rem 1.5rem;
+    }
+}
+
+/* Mobile */
+@media screen and (max-width: 768px) {
+    .heroBanner {
+        padding: 2rem 1rem;
+    }
+}
+
+/* Small mobile */
+@media screen and (max-width: 480px) {
+    .heroBanner {
+        padding: 1.5rem 1rem;
+    }
 }
 
 .buttons {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+@media screen and (max-width: 768px) {
+    .buttons {
+        flex-direction: column;
+        width: 100%;
+        gap: 0.75rem;
+    }
+}
+
+.heroTitle {
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    margin-bottom: 1rem;
+    line-height: 1.2;
+}
+
+.heroSubtitle {
+    font-size: clamp(1rem, 3vw, 1.5rem);
+    margin-bottom: 2rem;
+    line-height: 1.5;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+@media screen and (max-width: 768px) {
+    .heroTitle {
+        margin-bottom: 0.75rem;
+    }
+
+    .heroSubtitle {
+        margin-bottom: 1.5rem;
+    }
 }

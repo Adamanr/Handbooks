@@ -59,7 +59,7 @@ const FeatureList: FeatureItem[] = [
   },
   {
     title: "Курс по контейнеризации",
-    shortTitle: "containerization",
+    shortTitle: "k8s",
     Svg: require("@site/static/img/kubernetes.svg").default,
     description: (
       <>
@@ -78,7 +78,7 @@ const FeatureList: FeatureItem[] = [
 
 function Feature({ title, Svg, description, link, shortTitle }: FeatureItem) {
   return (
-    <div className={clsx("col col-2")}>
+    <div className={clsx("col", styles.featureCard)}>
       <div className="text--center">
         <Svg className={styles.featureSvg} role="img" />
       </div>
@@ -87,15 +87,12 @@ function Feature({ title, Svg, description, link, shortTitle }: FeatureItem) {
           {title}
         </Heading>
         <p>{description}</p>
-        <br />
         <div className={styles.buttons}>
           <Link className="button button--secondary button--lg" to={link}>
-            Начать изучение {shortTitle}!
+            Изучить {shortTitle}!
           </Link>
         </div>
-        <br />
       </div>
-      <br />
     </div>
   );
 }
@@ -103,7 +100,7 @@ function Feature({ title, Svg, description, link, shortTitle }: FeatureItem) {
 export default function HomepageFeatures(): ReactNode {
   return (
     <section className={styles.features}>
-      <div className="">
+      <div className="container">
         <div
           className={clsx(
             styles.grid,
