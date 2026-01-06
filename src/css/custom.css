@@ -1,17 +1,9 @@
-/*
-NOT MY STYLE. SOURCE:
-https://github.com/vendure-ecommerce/vendure/blob/cc4826dfb7c1a2f4e6ed8daa13eb017090d8bd9a/docs/src/css/custom.css
-*/
-
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap");
 
 :root {
-    --ifm-font-family-base: "Inter";
-}
+    --ifm-font-family-base: "Inter", system-ui, -apple-system, sans-serif;
 
-/* You can override the default Infima variables here. */
-:root {
-    /* Colors */
+    /* Enhanced Colors with gradients */
     --ifm-color-primary: #17c1ff;
     --ifm-color-primary-dark: #008ece;
     --ifm-color-primary-darker: #0072a7;
@@ -19,136 +11,268 @@ https://github.com/vendure-ecommerce/vendure/blob/cc4826dfb7c1a2f4e6ed8daa13eb01
     --ifm-color-primary-light: #78daff;
     --ifm-color-primary-lighter: #b8eaff;
     --ifm-color-primary-lightest: #dff3ff;
-    --ifm-navbar-background-color: #ffffff11;
-    --navbar-background-color-mobile: #ffffffee;
-    --ifm-heading-color: #000212;
+
+    /* Advanced color palette */
+    --color-accent: #ff6b6b;
+    --color-success: #51cf66;
+    --color-warning: #ffd43b;
+    --color-gradient-start: #17c1ff;
+    --color-gradient-end: #ff6b6b;
+
+    --ifm-navbar-background-color: rgba(255, 255, 255, 0.85);
+    --navbar-background-color-mobile: rgba(255, 255, 255, 0.95);
+    --ifm-heading-color: #0a1128;
     --ifm-color-content: var(--ifm-color-emphasis-800);
     --ifm-code-font-size: 95%;
-    --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+    --docusaurus-highlighted-code-line-bg: rgba(23, 193, 255, 0.15);
     --color-graphql-comment: #47954d;
     --color-graphql-identifier: rgb(227, 17, 108);
-    --color-members-border: var(--ifm-color-secondary);
-    --docusaurus-highlighted-code-line-bg: #e0f1ff;
-    --ifm-menu-link-sublist-icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg>');
-    --body-background: white;
-    --ifm-footer-background-color: #edf2f5;
-    --color-docsearch-border: #b7b7c3;
+    --color-members-border: rgba(23, 193, 255, 0.3);
+    --ifm-menu-link-sublist-icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg>');
+
+    /* Enhanced backgrounds */
+    --body-background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%);
+    --ifm-footer-background-color: #f8fafc;
+    --color-docsearch-border: #cbd5e1;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+    --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
+    --shadow-glow: 0 0 20px rgba(23, 193, 255, 0.3);
 
     /* Fonts */
     --ifm-heading-font-family: "Plus Jakarta Sans", var(--ifm-font-family-base);
     --ifm-heading-font-weight: 700;
+
+    /* Transitions */
+    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* For readability concerns, you should choose a lighter palette in dark mode. */
 html[data-theme="dark"] {
-    --ifm-background-color: #000212;
-    --ifm-heading-color: #ffffff;
-    --ifm-navbar-background-color: transparent;
-    --navbar-background-color-mobile: rgba(0, 0, 0, 0.8);
-    --ifm-card-background-color: transparent;
-    --ifm-color-content: hsla(0, 0%, 100%, 0.7);
-    --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+    --ifm-background-color: #0a0f1e;
+    --ifm-heading-color: #f8fafc;
+    --ifm-navbar-background-color: rgba(10, 15, 30, 0.85);
+    --navbar-background-color-mobile: rgba(10, 15, 30, 0.95);
+    --ifm-card-background-color: rgba(23, 193, 255, 0.05);
+    --ifm-color-content: rgba(248, 250, 252, 0.8);
+    --docusaurus-highlighted-code-line-bg: rgba(23, 193, 255, 0.15);
     --color-graphql-comment: #6ea372;
-
     --color-graphql-identifier: rgb(255, 121, 198);
-    --color-members-border: #333;
-    --docusaurus-highlighted-code-line-bg: rgba(15, 71, 117, 0.5);
+    --color-members-border: rgba(23, 193, 255, 0.2);
     --body-background: radial-gradient(
         ellipse 80% 50% at 50% -20%,
-        rgba(79, 208, 255, 0.3),
+        rgba(23, 193, 255, 0),
         transparent
     );
     --ifm-footer-background-color: var(--ifm-background-color);
-    --color-docsearch-border: #232347;
-    --ifm-footer-title-color: #ffffff;
+    --color-docsearch-border: #1e293b;
+    --ifm-footer-title-color: #f8fafc;
+    --shadow-glow: 0 0 30px rgba(23, 193, 255, 0.4);
 }
 
-/* Увеличение шрифтов текста и уменьшение размера заголовков постов */
+/* Smooth scrolling */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Enhanced body styling */
+body {
+    background: var(--body-background);
+    background-attachment: fixed;
+    transition: background var(--transition-slow);
+}
+
+/* Responsive Typography */
 @media screen and (max-width: 996px) {
     :root {
         --ifm-font-size-base: 18px;
+        --ifm-line-height-base: 1.7;
     }
     article header h1 {
-        font-size: 1.5rem !important;
+        font-size: 1.75rem !important;
+        line-height: 1.2;
     }
     .hero .hero__title {
         font-size: 2.5rem;
+        line-height: 1.1;
     }
 }
 
 @media screen and (min-width: 997px) {
     :root {
         --ifm-font-size-base: 17px;
+        --ifm-line-height-base: 1.7;
     }
     article header h1 {
-        font-size: 2rem !important;
+        font-size: 2.25rem !important;
+        line-height: 1.2;
     }
 }
 
-/* Умеьшает ширину основного блока текста */
-/* article {
-	max-width: 700px;
-	margin-left: auto;
-	margin-right: auto;
-} */
-
-/* Увеличивает размер шрифта в выпадающем списке навигации */
-/* .dropdown__link {
-	font-size: inherit;
-} */
-
-html[data-theme="light"] {
-    --ifm-background-color: #ffffff;
-}
-
+/* Beautiful Headings */
 h1,
 h2,
 h3,
 h4,
 h5,
 h6 {
-    letter-spacing: -0.05rem;
+    letter-spacing: -0.03em;
+    font-weight: 700;
+    position: relative;
+    transition: color var(--transition-base);
+}
+
+h1 {
+    background: linear-gradient(
+        135deg,
+        var(--ifm-heading-color) 0%,
+        var(--ifm-color-primary) 100%
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+h2::before {
+    content: "";
+    position: absolute;
+    left: -20px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 70%;
+    background: linear-gradient(
+        180deg,
+        var(--ifm-color-primary),
+        var(--ifm-color-primary-light)
+    );
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity var(--transition-base);
+}
+
+h2:hover::before {
+    opacity: 1;
 }
 
 .markdown h2:not(:first-of-type) {
-    --ifm-h2-vertical-rhythm-top: 5;
+    --ifm-h2-vertical-rhythm-top: 4;
+    margin-top: 3rem;
+    padding-top: 1rem;
 }
 
+/* Enhanced Images */
 .markdown img {
-    border-radius: 4px;
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    transition:
+        transform var(--transition-base),
+        box-shadow var(--transition-base);
 }
 
-.members-wrapper {
-    border-left: 1px solid var(--color-members-border);
-    padding-left: 32px;
+.markdown img:hover {
+    transform: scale(1.02);
+    box-shadow: var(--shadow-glow);
 }
 
-.members-wrapper > h3 {
-    margin-top: 42px;
+/* Code blocks with gradient border */
+pre[class*="language-"] {
+    tab-size: 4;
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    transition: box-shadow var(--transition-base);
 }
 
-.sidebar-section-header {
-    text-transform: uppercase;
-    font-weight: bold;
-    font-size: 12px;
-    opacity: 0.8;
-    color: #afafaf;
-    padding: var(--ifm-menu-link-padding-vertical)
-        var(--ifm-menu-link-padding-horizontal);
+pre[class*="language-"]::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(
+        90deg,
+        var(--color-gradient-start),
+        var(--color-gradient-end)
+    );
 }
 
-.sidebar-section-divider {
-    border-bottom: 1px solid var(--ifm-font-color-base);
-    opacity: 0.2;
-    margin: 6px 12px;
+pre[class*="language-"]:hover {
+    box-shadow: var(--shadow-glow);
 }
 
 .limited-height-code-block pre.prism-code {
     max-height: 800px;
 }
 
+/* Members wrapper with modern design */
+.members-wrapper {
+    border-left: 3px solid var(--ifm-color-primary);
+    padding-left: 32px;
+    position: relative;
+    transition: border-color var(--transition-base);
+}
+
+.members-wrapper::before {
+    content: "";
+    position: absolute;
+    left: -3px;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--ifm-color-primary), transparent);
+    opacity: 0;
+    transition: opacity var(--transition-base);
+}
+
+.members-wrapper:hover::before {
+    opacity: 1;
+}
+
+.members-wrapper > h3 {
+    margin-top: 42px;
+}
+
+/* Sidebar enhancements */
+.sidebar-section-header {
+    text-transform: uppercase;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    opacity: 0.7;
+    color: var(--ifm-color-primary);
+    padding: var(--ifm-menu-link-padding-vertical)
+        var(--ifm-menu-link-padding-horizontal);
+    transition: opacity var(--transition-fast);
+}
+
+.sidebar-section-header:hover {
+    opacity: 1;
+}
+
+.sidebar-section-divider {
+    border-bottom: 1px solid var(--ifm-font-color-base);
+    opacity: 0.15;
+    margin: 12px;
+    transition: opacity var(--transition-fast);
+}
+
+/* Enhanced GitHub link */
+.header-github-link {
+    transition: all var(--transition-base);
+    border-radius: 8px;
+    padding: 4px;
+}
+
 .header-github-link:hover {
-    opacity: 0.6;
+    opacity: 1;
+    background: rgba(23, 193, 255, 0.1);
+    transform: translateY(-2px);
 }
 
 .header-github-link::before {
@@ -156,8 +280,13 @@ h6 {
     width: 24px;
     height: 24px;
     display: flex;
+    transition: transform var(--transition-base);
     background: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12'/%3E%3C/svg%3E")
         no-repeat;
+}
+
+.header-github-link:hover::before {
+    transform: rotate(360deg);
 }
 
 [data-theme="dark"] .header-github-link::before {
@@ -165,11 +294,190 @@ h6 {
         no-repeat;
 }
 
+/* Hide external link icons */
 [class*="iconExternalLink"] {
     display: none;
 }
 
-/* Размер табуляции. По умолчанию 8, кажется */
-pre[class*="language-"] {
-    tab-size: 4;
+/* Animated menu links */
+.menu__link {
+    border-radius: 8px;
+    transition: all var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+}
+
+.menu__link::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--ifm-color-primary);
+    transform: scaleY(0);
+    transition: transform var(--transition-base);
+}
+
+.menu__link:hover::before,
+.menu__link--active::before {
+    transform: scaleY(1);
+}
+
+.menu__link:hover {
+    background: rgba(23, 193, 255, 0.08);
+}
+
+.menu__link--active {
+    background: rgba(23, 193, 255, 0.12);
+    font-weight: 600;
+}
+
+/* Card enhancements */
+.card {
+    border-radius: 16px;
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-base);
+    border: 1px solid rgba(23, 193, 255, 0.1);
+    overflow: hidden;
+    position: relative;
+}
+
+.card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(
+        90deg,
+        var(--color-gradient-start),
+        var(--color-gradient-end)
+    );
+    opacity: 0;
+    transition: opacity var(--transition-base);
+}
+
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-glow);
+}
+
+.card:hover::before {
+    opacity: 1;
+}
+
+/* Pagination buttons */
+.pagination-nav__link {
+    border-radius: 12px;
+    border: 2px solid rgba(23, 193, 255, 0.2);
+    transition: all var(--transition-base);
+}
+
+.pagination-nav__link:hover {
+    border-color: var(--ifm-color-primary);
+    box-shadow: var(--shadow-glow);
+    transform: translateX(4px);
+}
+
+.pagination-nav__link--prev:hover {
+    transform: translateX(-4px);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(23, 193, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+        180deg,
+        var(--ifm-color-primary),
+        var(--ifm-color-primary-dark)
+    );
+    border-radius: 5px;
+    transition: background var(--transition-fast);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--ifm-color-primary-dark);
+}
+
+/* Table of Contents */
+.table-of-contents__link {
+    transition: all var(--transition-fast);
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+.table-of-contents__link:hover {
+    background: rgba(23, 193, 255, 0.1);
+}
+
+.table-of-contents__link--active {
+    font-weight: 600;
+    color: var(--ifm-color-primary);
+    background: rgba(23, 193, 255, 0.15);
+}
+
+/* Admonitions with enhanced styling */
+.admonition {
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    border-left-width: 4px;
+    transition: all var(--transition-base);
+}
+
+.admonition:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateX(4px);
+}
+
+/* Button enhancements */
+.button {
+    border-radius: 8px;
+    font-weight: 600;
+    transition: all var(--transition-base);
+    position: relative;
+    overflow: hidden;
+}
+
+.button::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition:
+        width var(--transition-base),
+        height var(--transition-base);
+}
+
+.button:hover::before {
+    width: 300px;
+    height: 300px;
+}
+
+.button--primary {
+    background: linear-gradient(
+        135deg,
+        var(--ifm-color-primary),
+        var(--ifm-color-primary-dark)
+    );
+    border: none;
+}
+
+.button--primary:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-glow);
 }

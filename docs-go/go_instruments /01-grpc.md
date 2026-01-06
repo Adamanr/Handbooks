@@ -1,8 +1,8 @@
 ---
-sidebar_position: 9
+sidebar_position: 1
 ---
 
-# Go + gRPC
+# gRPC
 
 ## Введение: Почему gRPC?
 

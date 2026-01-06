@@ -1,7 +1,10 @@
 import { themes as prismThemes } from "prism-react-renderer";
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
+import { themes } from "prism-react-renderer";
 
+const lightCodeTheme = themes.github;
+const darkCodeTheme = themes.dracula; // или themes.vsDark, themes.palenight и т.д.
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 const config: Config = {
@@ -242,8 +245,9 @@ const config: Config = {
       copyright: `Copyright © ${new Date().getFullYear()} Handbooks, Inc. Built with Docusaurus.`,
     },
     prism: {
-      theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
+      theme: lightCodeTheme,
+      darkTheme: darkCodeTheme,
+      additionalLanguages: ["bash", "shell-session"], // если используешь shell-session
     },
     clientModules: [require.resolve("./src/clientModules/giscusReload.ts")],
   } satisfies Preset.ThemeConfig,
