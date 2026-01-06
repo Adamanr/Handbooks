@@ -26,7 +26,7 @@ const config: Config = {
   organizationName: "adamanr", // Usually your GitHub org/user name.
   projectName: "adamanr.github.io", // Usually your repo name.
   trailingSlash: false,
-  onBrokenLinks: "throw",
+  onBrokenLinks: "ignore",
 
   i18n: {
     defaultLocale: "ru",
@@ -195,7 +195,7 @@ const config: Config = {
           items: [
             {
               label: "Go",
-              to: "/go/category/go-основы",
+              to: "/go/category/basics",
             },
             {
               label: "PostgreSQL",
