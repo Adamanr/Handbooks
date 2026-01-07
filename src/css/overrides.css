@@ -76,18 +76,21 @@ body {
 
 /* Mobile sidebar with backdrop blur */
 .navbar-sidebar {
-    background-color: var(--ifm-background-color);
+    height: 100vh;
+    background-color: var(--ifm-navbar-background-color);
     backdrop-filter: blur(20px);
 }
 
 .navbar-sidebar__backdrop {
-    background: rgba(0, 0, 0, 0.5);
+    height: 100vh;
+    background: var(--navbar-background-color-mobile);
     backdrop-filter: blur(4px);
     transition: opacity var(--transition-base);
 }
 
 /* Enhanced navbar with glassmorphism */
 .navbar {
+    height: 10vh;
     background-color: var(--navbar-background-color-mobile);
     backdrop-filter: blur(20px);
     border-bottom: 1px solid rgba(23, 193, 255, 0.1);
@@ -104,17 +107,11 @@ body {
         margin-left: 32px;
         padding: 24px;
         border-radius: 16px;
-        backdrop-filter: blur(10px);
-        box-shadow: var(--shadow-sm);
         transition: all var(--transition-base);
     }
 
     [data-theme="dark"] .docs-wrapper article:not(.col) {
         background: rgba(23, 193, 255, 0.03);
-    }
-
-    .docs-wrapper article:not(.col):hover {
-        box-shadow: var(--shadow-md);
     }
 
     .navbar {
