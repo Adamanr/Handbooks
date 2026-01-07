@@ -25,7 +25,7 @@ const FeatureList: FeatureItem[] = [
         освоить востребованный язык программирования Go.
       </>
     ),
-    link: "go/category/go-basic",
+    link: "go/",
   },
   {
     title: "Курс по PostgreSQL",

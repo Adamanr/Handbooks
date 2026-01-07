@@ -3,442 +3,239 @@ sidebar_position: 16
 title: HTTP-клиент
 ---
 
-# HTTP-клиент в Go
+# Введение
 
-Стандартная библиотека `net/http` предоставляет мощный HTTP-клиент.
+Пакет `net/http` не только умеет принимать запросы (сервер), но и отлично работает как **клиент** — отправляет запросы на другие сайты и API. Это нужно почти в каждом реальном проекте: получать данные с внешних сервисов, проверять погоду, работать с платежами, авторизоваться в OAuth и т.д.
 
-## Базовый GET-запрос
+## Самый простой GET-запрос
 
 ```go
 package main
 
 import (
     "fmt"
-    "net/http"
     "io"
+    "net/http"
 )
 
 func main() {
+    // Делаем GET-запрос
     resp, err := http.Get("https://jsonplaceholder.typicode.com/posts/1")
-    if err != nil {
-        fmt.Println("Ошибка:", err)
-        return
-    }
-    defer resp.Body.Close()
-    
-    body, err := io.ReadAll(resp.Body)
-    if err != nil {
-        fmt.Println("Ошибка чтения:", err)
-        return
-    }
-    
-    fmt.Println("Status:", resp.Status)
-    fmt.Println("Body:", string(body))
-}
-```
-
-## Кастомный клиент
-
-```go
-package main
-
-import (
-    "fmt"
-    "net/http"
-    "time"
-)
-
-func main() {
-    client := &http.Client{
-        Timeout: 10 * time.Second, // Тайм-аут на весь запрос
-    }
-    
-    resp, err := client.Get("https://example.com")
-    if err != nil {
-        fmt.Println("Ошибка:", err)
-        return
-    }
-    defer resp.Body.Close()
-    
-    fmt.Println("Status:", resp.Status)
-}
-```
-
-## POST-запрос с JSON
-
-```go
-package main
-
-import (
-    "bytes"
-    "encoding/json"
-    "fmt"
-    "net/http"
-)
-
-type Post struct {
-    Title  string `json:"title"`
-    Body   string `json:"body"`
-    UserID int    `json:"userId"`
-}
-
-func main() {
-    post := Post{
-        Title:  "My Post",
-        Body:   "Content here",
-        UserID: 1,
-    }
-    
-    // Сериализуем в JSON
-    jsonData, err := json.Marshal(post)
-    if err != nil {
-        fmt.Println("Ошибка маршалинга:", err)
-        return
-    }
-    
-    // Создаём запрос
-    resp, err := http.Post(
-        "https://jsonplaceholder.typicode.com/posts",
-        "application/json",
-        bytes.NewBuffer(jsonData),
-    )
     if err != nil {
         fmt.Println("Ошибка запроса:", err)
         return
     }
+    // Важно! Всегда закрываем тело
     defer resp.Body.Close()
-    
-    fmt.Println("Status:", resp.Status)
-}
-```
 
-## Кастомные заголовки
-
-```go
-package main
-
-import (
-    "fmt"
-    "net/http"
-)
-
-func main() {
-    client := &http.Client{}
-    
-    // Создаём запрос с заголовками
-    req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
+    // Читаем ответ
+    body, err := io.ReadAll(resp.Body)
     if err != nil {
-        fmt.Println("Ошибка:", err)
+        fmt.Println("Ошибка чтения ответа:", err)
         return
     }
-    
-    // Добавляем заголовки
-    req.Header.Set("Accept", "application/vnd.github.v3+json")
-    req.Header.Set("Authorization", "token YOUR_TOKEN")
-    req.Header.Set("User-Agent", "MyGoApp/1.0")
-    
-    // Выполняем
-    resp, err := client.Do(req)
-    if err != nil {
-        fmt.Println("Ошибка:", err)
-        return
-    }
-    defer resp.Body.Close()
-    
-    fmt.Println("Status:", resp.Status)
-    fmt.Println("Content-Type:", resp.Header.Get("Content-Type"))
+
+    fmt.Println("Статус:", resp.Status)           // 200 OK
+    fmt.Println("Тип контента:", resp.Header.Get("Content-Type"))
+    fmt.Println("Ответ:", string(body))
 }
 ```
 
-## Обработка ошибок и повторные попытки
+**Что тут важно помнить:**
+- `defer resp.Body.Close()` — **обязательно**, иначе будут утечки соединений.
+- Проверяй ошибки после каждого шага.
+- `resp.StatusCode` — код ответа (200, 404, 500 и т.д.).
+
+## Кастомный клиент с таймаутом
+
+По умолчанию `http.Get` использует клиент без таймаута — запрос может висеть вечно. Лучше создать свой клиент:
 
 ```go
-package main
-
-import (
-    "fmt"
-    "log"
-    "net/http"
-    "time"
-)
-
-func main() {
-    url := "https://example.com"
-    
-    // Повторяем до 3 раз с экспоненциальной задержкой
-    for attempt := 1; attempt <= 3; attempt++ {
-        resp, err := http.Get(url)
-        
-        if err != nil {
-            log.Printf("Попытка %d: ошибка %v", attempt, err)
-            
-            if attempt < 3 {
-                delay := time.Duration(attempt*attempt) * time.Second
-                log.Printf("Ждём %v перед повторной попыткой", delay)
-                time.Sleep(delay)
-                continue
-            }
-            
-            log.Fatal("Все попытки исчерпаны")
-            return
-        }
-        
-        resp.Body.Close()
-        
-        if resp.StatusCode >= 500 {
-            log.Printf("Попытка %d: сервер вернул %d", attempt, resp.StatusCode)
-            
-            if attempt < 3 {
-                delay := time.Duration(attempt*attempt) * time.Second
-                log.Printf("Ждём %v перед повторной попыткой", delay)
-                time.Sleep(delay)
-                continue
-            }
-        }
-        
-        // Успех
-        log.Printf("Успешно на попытке %d", attempt)
-        break
-    }
+client := &http.Client{
+    Timeout: 10 * time.Second, // весь запрос (соединение + чтение) не дольше 10 сек
 }
+
+resp, err := client.Get("https://example.com")
 ```
 
-## Типизированный клиент
+**Почему это лучше?**
+- Защита от "зависших" серверов.
+- Предсказуемое поведение.
+
+## POST-запрос с JSON
 
 ```go
-package main
-
-import (
-    "bytes"
-    "encoding/json"
-    "fmt"
-    "net/http"
-    "time"
-)
-
-type APIResponse[T any] struct {
-    Data   T
-    Status int
-    Error  string
-}
-
 type Post struct {
-    ID     int    `json:"id"`
     Title  string `json:"title"`
     Body   string `json:"body"`
     UserID int    `json:"userId"`
 }
 
-type APIClient struct {
-    baseURL string
-    client  *http.Client
+post := Post{
+    Title:  "Мой первый пост",
+    Body:   "Привет из Go!",
+    UserID: 1,
 }
 
-func NewAPIClient(baseURL string) *APIClient {
+jsonData, _ := json.Marshal(post)
+
+resp, err := http.Post(
+    "https://jsonplaceholder.typicode.com/posts",
+    "application/json",
+    bytes.NewBuffer(jsonData),
+)
+```
+
+Или универсально через `NewRequest`:
+
+```go
+req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+req.Header.Set("Content-Type", "application/json")
+// + любые заголовки
+
+resp, err := client.Do(req)
+```
+
+## Заголовки, авторизация и User-Agent
+
+```go
+req, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
+
+// Обязательные и полезные заголовки
+req.Header.Set("Accept", "application/vnd.github.v3+json")
+req.Header.Set("Authorization", "token ghp_твой_токен")
+req.Header.Set("User-Agent", "MyGoApp/1.0") // GitHub требует User-Agent!
+
+resp, _ := client.Do(req)
+```
+
+**Совет:** Многие API (GitHub, Telegram) требуют `User-Agent` — иначе 403 Forbidden.
+
+## Повторные попытки (retry) при ошибках
+
+Сети ненадёжны — запросы иногда падают. Делай retry:
+
+```go
+func doRequestWithRetry(url string, maxRetries int) (*http.Response, error) {
+    for i := 0; i <= maxRetries; i++ {
+        resp, err := http.Get(url)
+        if err == nil && resp.StatusCode < 500 {
+            return resp, nil // успех
+        }
+
+        if resp != nil {
+            resp.Body.Close()
+        }
+
+        if i < maxRetries {
+            wait := time.Duration(1<<i) * time.Second // 1s, 2s, 4s...
+            fmt.Printf("Попытка %d не удалась, ждём %v...\n", i+1, wait)
+            time.Sleep(wait)
+        }
+    }
+    return nil, fmt.Errorf("все попытки исчерпаны")
+}
+```
+
+## Типизированный клиент — как в реальных проектах
+
+Создай структуру-клиент — код будет чистым и переиспользуемым:
+
+```go
+type APIClient struct {
+    BaseURL string
+    Client  *http.Client
+    Token   string
+}
+
+func NewAPIClient(baseURL, token string) *APIClient {
     return &APIClient{
-        baseURL: baseURL,
-        client: &http.Client{
-            Timeout: 10 * time.Second,
-        },
+        BaseURL: baseURL,
+        Client: &http.Client{Timeout: 15 * time.Second},
+        Token:   token,
     }
 }
 
 func (c *APIClient) GetPost(id int) (*Post, error) {
-    url := fmt.Sprintf("%s/posts/%d", c.baseURL, id)
-    
-    resp, err := c.client.Get(url)
+    url := fmt.Sprintf("%s/posts/%d", c.BaseURL, id)
+    req, _ := http.NewRequest("GET", url, nil)
+    req.Header.Set("Authorization", "Bearer "+c.Token)
+
+    resp, err := c.Client.Do(req)
     if err != nil {
         return nil, err
     }
     defer resp.Body.Close()
-    
+
     if resp.StatusCode != http.StatusOK {
-        return nil, fmt.Errorf("status: %d", resp.StatusCode)
+        return nil, fmt.Errorf("ошибка: %d", resp.StatusCode)
     }
-    
+
     var post Post
-    if err := json.NewDecoder(resp.Body).Decode(&post); err != nil {
-        return nil, err
-    }
-    
+    json.NewDecoder(resp.Body).Decode(&post)
     return &post, nil
 }
 
-func (c *APIClient) CreatePost(post Post) (*Post, error) {
-    url := fmt.Sprintf("%s/posts", c.baseURL)
-    
-    data, err := json.Marshal(post)
-    if err != nil {
-        return nil, err
-    }
-    
-    resp, err := c.client.Post(
-        url,
-        "application/json",
-        bytes.NewBuffer(data),
-    )
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
-    
-    var created Post
-    if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
-        return nil, err
-    }
-    
-    return &created, nil
-}
-
-func main() {
-    client := NewAPIClient("https://jsonplaceholder.typicode.com")
-    
-    post, err := client.GetPost(1)
-    if err != nil {
-        fmt.Println("Ошибка:", err)
-        return
-    }
-    
-    fmt.Printf("Получен пост: %+v\n", post)
-}
+// Использование
+client := NewAPIClient("https://jsonplaceholder.typicode.com", "")
+post, err := client.GetPost(1)
 ```
 
-## Работа с Cookies
+## Параллельные запросы
+
+Когда нужно много данных — запускай запросы параллельно:
 
 ```go
-package main
-
-import (
-    "fmt"
-    "net/http"
-)
-
-func main() {
-    client := &http.Client{}
-    
-    // Сначала логинимся
-    req, _ := http.NewRequest("POST", "https://example.com/login", nil)
-    resp, err := client.Do(req)
-    if err != nil {
-        fmt.Println("Ошибка:", err)
-        return
-    }
-    
-    // Cookies автоматически сохраняются в Jar
-    fmt.Println("Cookies установлены:", resp.Cookies())
-    
-    // Следующий запрос использует те же cookies
-    req2, _ := http.NewRequest("GET", "https://example.com/profile", nil)
-    resp2, _ := client.Do(req2)
-    
-    fmt.Println("Status:", resp2.Status)
-}
-```
-
-## Настройка Transport
-
-```go
-package main
-
-import (
-    "crypto/tls"
-    "fmt"
-    "net/http"
-    "time"
-)
-
-func main() {
-    transport := &http.Transport{
-        // Настройки соединения
-        MaxIdleConns:        100,
-        MaxIdleConnsPerHost: 10,
-        IdleConnTimeout:     90 * time.Second,
-        
-        // TLS настройки
-        TLSClientConfig: &tls.Config{
-            InsecureSkipVerify: false, // ⚠️ Только для разработки!
-        },
-        
-        // Прокси
-        Proxy: http.ProxyFromEnvironment,
-    }
-    
-    client := &http.Client{
-        Transport: transport,
-        Timeout:   30 * time.Second,
-    }
-    
-    resp, err := client.Get("https://example.com")
-    if err != nil {
-        fmt.Println("Ошибка:", err)
-        return
-    }
-    defer resp.Body.Close()
-    
-    fmt.Println("Status:", resp.Status)
-}
-```
-
-## Конкурентные запросы
-
-```go
-package main
-
-import (
-    "fmt"
-    "net/http"
-    "sync"
-)
-
-type Post struct {
-    ID int
-}
-
-func fetchPost(id int, ch chan<- Post) {
-    resp, err := http.Get(fmt.Sprintf("https://jsonplaceholder.typicode.com/posts/%d", id))
-    if err != nil {
-        ch <- Post{ID: -1}
-        return
-    }
-    defer resp.Body.Close()
-    
-    // Просто возвращаем ID для примера
-    ch <- Post{ID: id}
-}
-
-func main() {
-    posts := make(chan Post, 10)
+func fetchPostsParallel(ids []int) {
     var wg sync.WaitGroup
-    
-    // Запрашиваем 10 постов параллельно
-    for i := 1; i <= 10; i++ {
+    results := make(chan Post, len(ids))
+
+    for _, id := range ids {
         wg.Add(1)
         go func(id int) {
             defer wg.Done()
-            fetchPost(id, posts)
-        }(i)
+            post, _ := fetchPost(id) // твоя функция GET
+            if post != nil {
+                results <- *post
+            }
+        }(id)
     }
-    
-    // Закрываем канал после завершения всех горутин
-    go func() {
-        wg.Wait()
-        close(posts)
-    }()
-    
-    // Читаем результаты
-    for post := range posts {
-        fmt.Printf("Post ID: %d\n", post.ID)
+
+    wg.Wait()
+    close(results)
+
+    for post := range results {
+        fmt.Printf("Пост %d: %s\n", post.ID, post.Title)
     }
 }
 ```
 
-## Итоги
+## Полезные настройки Transport
 
-| Компонент | Назначение |
-|-----------|------------|
-| `http.Get()` | Простой GET-запрос |
-| `http.Client` | Кастомный клиент с тайм-аутом |
-| `http.NewRequest()` | Кастомный запрос с заголовками |
-| `http.Transport` | Настройки соединения |
-| `http.CookieJar` | Управление cookies |
-| `http.RoundTripper` | Интерфейс для перехвата запросов |
+Для продакшена настрой `Transport`:
+
+```go
+transport := &http.Transport{
+    MaxIdleConns:        100,              // общее количество idle-соединений
+    MaxIdleConnsPerHost: 10,               // на один хост
+    IdleConnTimeout:     90 * time.Second,
+    TLSHandshakeTimeout: 10 * time.Second,
+}
+
+client := &http.Client{
+    Transport: transport,
+    Timeout:   30 * time.Second,
+}
+```
+
+Это ускоряет повторные запросы к одному хосту (keep-alive).
+
+## Лучшие практики (чек-лист)
+
+1. **Всегда** `defer resp.Body.Close()`.
+2. **Всегда** проверяй ошибки и статус-код.
+3. Создавай **свой клиент** с таймаутом.
+4. Добавляй **User-Agent** и нужные заголовки.
+5. Делай **retry** для временных ошибок.
+6. Используй **структуру-клиент** для API.
+7. Для параллельных запросов — горутины + WaitGroup/errgroup.
