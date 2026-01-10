@@ -76,7 +76,7 @@ body {
 
 /* Mobile sidebar with backdrop blur */
 .navbar-sidebar {
-    height: 10%;
+    height: 100vh;
     background-color: var(--ifm-navbar-background-color);
     backdrop-filter: blur(20px);
 }
