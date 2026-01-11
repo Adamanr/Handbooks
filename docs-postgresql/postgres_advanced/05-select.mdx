@@ -1,0 +1,1348 @@
+---
+sidebar_position: 5
+title: "Сложные SELECT запросы"
+description: "В этой главе мы рассмотрим основы SQL, включая операции определения данных (DDL) и манипулирования данными (DML), создание таблиц и установку связей между ними."
+---
+
+# Сложные SELECT запросы: JOIN, подзапросы, агрегатные функции
+
+## Введение
+
+**SELECT** — самая важная и часто используемая команда в SQL. Освоение сложных SELECT запросов открывает возможности для глубокого анализа данных, построения отчетов и решения бизнес-задач. В этом уроке мы создадим тестовую базу данных и разберёмся уже на примере как работать с помощью JOIN, подзапросов и агрегатных функций.
+
+## Подготовка тестовой базы данных
+
+Для практики создадим реалистичную базу данных учебного заведения.
+
+```sql
+-- Создание базы данных
+CREATE DATABASE university;
+\c university
+
+-- Студенты
+CREATE TABLE students (
+    student_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    date_of_birth DATE NOT NULL,
+    enrollment_date DATE DEFAULT CURRENT_DATE,
+    gpa NUMERIC(3, 2) CHECK (gpa >= 0 AND gpa <= 4.0),
+    major VARCHAR(100),
+    year INTEGER CHECK (year BETWEEN 1 AND 6),
+    city VARCHAR(100),
+    country VARCHAR(100) DEFAULT 'Russia'
+);
+
+-- Преподаватели
+CREATE TABLE professors (
+    professor_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    department VARCHAR(100),
+    hire_date DATE NOT NULL,
+    salary NUMERIC(10, 2) CHECK (salary > 0),
+    office_number VARCHAR(20)
+);
+
+-- Курсы
+CREATE TABLE courses (
+    course_id SERIAL PRIMARY KEY,
+    course_code VARCHAR(20) UNIQUE NOT NULL,
+    course_name VARCHAR(200) NOT NULL,
+    credits INTEGER CHECK (credits > 0),
+    department VARCHAR(100),
+    professor_id INTEGER REFERENCES professors(professor_id),
+    max_students INTEGER,
+    semester VARCHAR(20)
+);
+
+-- Регистрация на курсы (студент-курс, многие-ко-многим)
+CREATE TABLE enrollments (
+    enrollment_id SERIAL PRIMARY KEY,
+    student_id INTEGER NOT NULL REFERENCES students(student_id) ON DELETE CASCADE,
+    course_id INTEGER NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
+    enrollment_date DATE DEFAULT CURRENT_DATE,
+    grade VARCHAR(2) CHECK (grade IN ('A', 'B', 'C', 'D', 'F', 'W')),
+    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'completed', 'dropped')),
+    UNIQUE(student_id, course_id)
+);
+
+-- Экзамены
+CREATE TABLE exams (
+    exam_id SERIAL PRIMARY KEY,
+    course_id INTEGER NOT NULL REFERENCES courses(course_id),
+    exam_date TIMESTAMPTZ NOT NULL,
+    exam_type VARCHAR(20) CHECK (exam_type IN ('midterm', 'final', 'quiz')),
+    max_score INTEGER NOT NULL,
+    duration_minutes INTEGER
+);
+
+-- Результаты экзаменов
+CREATE TABLE exam_results (
+    result_id SERIAL PRIMARY KEY,
+    exam_id INTEGER NOT NULL REFERENCES exams(exam_id),
+    student_id INTEGER NOT NULL REFERENCES students(student_id),
+    score NUMERIC(5, 2) NOT NULL,
+    submitted_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(exam_id, student_id)
+);
+
+-- Индексы для производительности
+CREATE INDEX idx_enrollments_student ON enrollments(student_id);
+CREATE INDEX idx_enrollments_course ON enrollments(course_id);
+CREATE INDEX idx_courses_professor ON courses(professor_id);
+CREATE INDEX idx_exam_results_exam ON exam_results(exam_id);
+CREATE INDEX idx_exam_results_student ON exam_results(student_id);
+
+-- Вставка тестовых данных
+INSERT INTO professors (first_name, last_name, email, department, hire_date, salary, office_number) VALUES
+    ('Иван', 'Петров', 'i.petrov@uni.edu', 'Математика', '2010-09-01', 120000, 'A-301'),
+    ('Мария', 'Сидорова', 'm.sidorova@uni.edu', 'Информатика', '2012-09-01', 130000, 'B-205'),
+    ('Алексей', 'Смирнов', 'a.smirnov@uni.edu', 'Физика', '2008-09-01', 125000, 'C-101'),
+    ('Елена', 'Козлова', 'e.kozlova@uni.edu', 'Информатика', '2015-09-01', 110000, 'B-210'),
+    ('Дмитрий', 'Васильев', 'd.vasiliev@uni.edu', 'Математика', '2013-09-01', 115000, 'A-305');
+
+INSERT INTO courses (course_code, course_name, credits, department, professor_id, max_students, semester) VALUES
+    ('MATH101', 'Математический анализ I', 4, 'Математика', 1, 100, 'Fall 2024'),
+    ('MATH102', 'Математический анализ II', 4, 'Математика', 1, 100, 'Spring 2024'),
+    ('CS101', 'Введение в программирование', 3, 'Информатика', 2, 80, 'Fall 2024'),
+    ('CS201', 'Структуры данных', 4, 'Информатика', 2, 60, 'Spring 2024'),
+    ('CS301', 'Базы данных', 4, 'Информатика', 4, 50, 'Fall 2024'),
+    ('PHYS101', 'Общая физика', 4, 'Физика', 3, 120, 'Fall 2024'),
+    ('MATH201', 'Линейная алгебра', 3, 'Математика', 5, 90, 'Fall 2024'),
+    ('CS102', 'Алгоритмы', 3, 'Информатика', 4, 70, 'Spring 2024');
+
+INSERT INTO students (first_name, last_name, email, date_of_birth, gpa, major, year, city, country) VALUES
+    ('Анна', 'Иванова', 'anna.ivanova@student.edu', '2003-05-15', 3.85, 'Информатика', 2, 'Москва', 'Russia'),
+    ('Петр', 'Смирнов', 'petr.smirnov@student.edu', '2004-03-22', 3.45, 'Математика', 2, 'Санкт-Петербург', 'Russia'),
+    ('Ольга', 'Петрова', 'olga.petrova@student.edu', '2002-11-08', 3.92, 'Информатика', 3, 'Москва', 'Russia'),
+    ('Сергей', 'Козлов', 'sergey.kozlov@student.edu', '2003-07-30', 2.85, 'Физика', 2, 'Казань', 'Russia'),
+    ('Екатерина', 'Новикова', 'ekaterina.novikova@student.edu', '2005-01-12', 3.75, 'Математика', 1, 'Москва', 'Russia'),
+    ('Михаил', 'Волков', 'mikhail.volkov@student.edu', '2003-09-18', 3.20, 'Информатика', 2, 'Новосибирск', 'Russia'),
+    ('Наталья', 'Морозова', 'natalya.morozova@student.edu', '2004-06-25', 3.65, 'Физика', 2, 'Екатеринбург', 'Russia'),
+    ('Александр', 'Лебедев', 'alexander.lebedev@student.edu', '2002-12-03', 3.95, 'Математика', 3, 'Москва', 'Russia'),
+    ('Виктория', 'Соколова', 'victoria.sokolova@student.edu', '2005-04-17', 3.55, 'Информатика', 1, 'Санкт-Петербург', 'Russia'),
+    ('Игорь', 'Павлов', 'igor.pavlov@student.edu', '2003-10-09', 3.10, 'Физика', 2, 'Нижний Новгород', 'Russia');
+
+INSERT INTO enrollments (student_id, course_id, grade, status) VALUES
+    -- Анна (student_id=1)
+    (1, 3, 'A', 'completed'), (1, 4, 'A', 'active'), (1, 5, NULL, 'active'),
+    -- Петр (student_id=2)
+    (2, 1, 'B', 'completed'), (2, 2, NULL, 'active'), (2, 7, 'B', 'active'),
+    -- Ольга (student_id=3)
+    (3, 4, 'A', 'completed'), (3, 5, 'A', 'active'), (3, 8, NULL, 'active'),
+    -- Сергей (student_id=4)
+    (4, 6, 'C', 'completed'), (4, 1, 'D', 'completed'),
+    -- Екатерина (student_id=5)
+    (5, 1, 'A', 'active'), (5, 3, NULL, 'active'), (5, 7, NULL, 'active'),
+    -- Михаил (student_id=6)
+    (6, 3, 'B', 'completed'), (6, 5, NULL, 'active'),
+    -- Наталья (student_id=7)
+    (7, 6, 'B', 'completed'), (7, 1, 'C', 'active'),
+    -- Александр (student_id=8)
+    (8, 2, 'A', 'active'), (8, 7, 'A', 'completed'), (8, 8, NULL, 'active'),
+    -- Виктория (student_id=9)
+    (9, 3, 'A', 'active'), (9, 1, NULL, 'active'),
+    -- Игорь (student_id=10)
+    (10, 6, 'C', 'completed'), (10, 4, 'D', 'dropped');
+
+INSERT INTO exams (course_id, exam_date, exam_type, max_score, duration_minutes) VALUES
+    (1, '2024-10-15 10:00:00', 'midterm', 100, 120),
+    (1, '2024-12-20 10:00:00', 'final', 100, 180),
+    (3, '2024-10-20 14:00:00', 'midterm', 100, 90),
+    (3, '2024-12-18 14:00:00', 'final', 100, 120),
+    (5, '2024-11-05 10:00:00', 'quiz', 50, 60),
+    (5, '2024-12-15 10:00:00', 'final', 100, 150);
+
+INSERT INTO exam_results (exam_id, student_id, score) VALUES
+    (1, 2, 78.5), (1, 5, 92.0), (1, 7, 65.5), (1, 9, 88.0),
+    (3, 1, 95.0), (3, 5, 87.5), (3, 6, 76.0), (3, 9, 91.0),
+    (5, 1, 45.0), (5, 3, 48.5), (5, 6, 38.0);
+```
+
+## JOIN операции в деталях
+
+### INNER JOIN — Внутреннее объединение
+
+INNER JOIN возвращает только те строки, для которых найдено совпадение в обеих таблицах.
+
+```sql
+-- Базовый INNER JOIN
+SELECT 
+    s.first_name,
+    s.last_name,
+    c.course_name,
+    e.grade
+FROM students s
+INNER JOIN enrollments e ON s.student_id = e.student_id
+INNER JOIN courses c ON e.course_id = c.course_id;
+
+-- С условием WHERE
+SELECT 
+    s.first_name || ' ' || s.last_name AS student_name,
+    c.course_name,
+    e.grade
+FROM students s
+INNER JOIN enrollments e ON s.student_id = e.student_id
+INNER JOIN courses c ON e.course_id = c.course_id
+WHERE e.status = 'completed' 
+  AND e.grade IN ('A', 'B')
+ORDER BY s.last_name, c.course_name;
+
+-- Множественные JOIN с агрегацией
+SELECT 
+    p.first_name || ' ' || p.last_name AS professor,
+    p.department,
+    COUNT(DISTINCT c.course_id) AS courses_teaching,
+    COUNT(DISTINCT e.student_id) AS total_students
+FROM professors p
+INNER JOIN courses c ON p.professor_id = c.professor_id
+INNER JOIN enrollments e ON c.course_id = e.course_id
+WHERE e.status = 'active'
+GROUP BY p.professor_id, p.first_name, p.last_name, p.department
+ORDER BY total_students DESC;
+```
+
+:::tip Порядок JOIN
+Порядок JOIN важен для читаемости, но PostgreSQL оптимизатор может изменить порядок выполнения для лучшей производительности. Пишите JOIN в логическом порядке для понимания.
+:::
+
+### LEFT JOIN — Левое внешнее объединение
+
+LEFT JOIN возвращает все строки из левой таблицы и совпадающие из правой (или NULL).
+
+```sql
+-- Все студенты и их записи на курсы (включая тех, кто не записан)
+SELECT 
+    s.student_id,
+    s.first_name || ' ' || s.last_name AS student_name,
+    s.major,
+    c.course_name,
+    e.grade
+FROM students s
+LEFT JOIN enrollments e ON s.student_id = e.student_id
+LEFT JOIN courses c ON e.course_id = c.course_id
+ORDER BY s.student_id;
+
+-- Найти студентов БЕЗ записей на курсы
+SELECT 
+    s.student_id,
+    s.first_name,
+    s.last_name,
+    s.email,
+    s.major
+FROM students s
+LEFT JOIN enrollments e ON s.student_id = e.student_id
+WHERE e.enrollment_id IS NULL;
+
+-- Профессора и количество студентов (включая профессоров без студентов)
+SELECT 
+    p.first_name || ' ' || p.last_name AS professor,
+    p.department,
+    COUNT(DISTINCT e.student_id) AS student_count,
+    COALESCE(STRING_AGG(DISTINCT c.course_name, ', '), 'No courses') AS courses
+FROM professors p
+LEFT JOIN courses c ON p.professor_id = c.professor_id
+LEFT JOIN enrollments e ON c.course_id = e.course_id AND e.status = 'active'
+GROUP BY p.professor_id, p.first_name, p.last_name, p.department
+ORDER BY student_count DESC;
+```
+
+### RIGHT JOIN — Правое внешнее объединение
+
+RIGHT JOIN возвращает все строки из правой таблицы и совпадающие из левой.
+
+```sql
+-- Все курсы и записанные студенты (включая курсы без студентов)
+SELECT 
+    c.course_name,
+    c.course_code,
+    COUNT(e.student_id) AS enrolled_students,
+    c.max_students,
+    c.max_students - COUNT(e.student_id) AS available_seats
+FROM enrollments e
+RIGHT JOIN courses c ON e.course_id = c.course_id
+WHERE e.status = 'active' OR e.status IS NULL
+GROUP BY c.course_id, c.course_name, c.course_code, c.max_students
+ORDER BY enrolled_students DESC;
+
+-- Эквивалентно LEFT JOIN с обратным порядком
+SELECT 
+    c.course_name,
+    COUNT(e.student_id) AS enrolled_students
+FROM courses c
+LEFT JOIN enrollments e ON c.course_id = e.course_id AND e.status = 'active'
+GROUP BY c.course_id, c.course_name;
+```
+
+:::info RIGHT JOIN vs LEFT JOIN
+`RIGHT JOIN` используется реже, так как любой RIGHT JOIN можно переписать как LEFT JOIN, поменяв таблицы местами. LEFT JOIN более интуитивен и чаще используется.
+:::
+
+### FULL OUTER JOIN — Полное внешнее объединение
+
+FULL OUTER JOIN возвращает все строки из обеих таблиц, совпадающие и несовпадающие.
+
+```sql
+-- Все студенты и все курсы (показать связи и отсутствие связей)
+SELECT 
+    s.first_name || ' ' || s.last_name AS student,
+    c.course_name,
+    e.grade,
+    e.status
+FROM students s
+FULL OUTER JOIN enrollments e ON s.student_id = e.student_id
+FULL OUTER JOIN courses c ON e.course_id = c.course_id
+WHERE s.student_id IS NULL OR c.course_id IS NULL
+ORDER BY s.last_name, c.course_name;
+
+-- Найти несоответствия
+SELECT 
+    CASE 
+        WHEN s.student_id IS NULL THEN 'Курс без студентов'
+        WHEN c.course_id IS NULL THEN 'Студент без курсов'
+        ELSE 'OK'
+    END AS status,
+    COALESCE(s.first_name || ' ' || s.last_name, 'N/A') AS student,
+    COALESCE(c.course_name, 'N/A') AS course
+FROM students s
+FULL OUTER JOIN enrollments e ON s.student_id = e.student_id
+FULL OUTER JOIN courses c ON e.course_id = c.course_id
+WHERE s.student_id IS NULL OR c.course_id IS NULL;
+```
+
+### CROSS JOIN — Декартово произведение
+
+CROSS JOIN создает все возможные комбинации строк из двух таблиц.
+
+```sql
+-- Все комбинации студентов и курсов
+SELECT 
+    s.first_name || ' ' || s.last_name AS student,
+    c.course_name
+FROM students s
+CROSS JOIN courses c
+WHERE s.major = 'Информатика' 
+  AND c.department = 'Информатика'
+ORDER BY s.last_name, c.course_name
+LIMIT 20;
+
+-- Генерация всех возможных расписаний
+SELECT 
+    p.first_name || ' ' || p.last_name AS professor,
+    c.course_name,
+    s.semester
+FROM professors p
+CROSS JOIN courses c
+CROSS JOIN (VALUES ('Fall 2024'), ('Spring 2025')) AS s(semester)
+WHERE p.department = c.department
+ORDER BY professor, semester;
+
+-- Практическое применение: найти студентов, которые могут быть объединены в группы
+SELECT 
+    s1.first_name || ' ' || s1.last_name AS student1,
+    s2.first_name || ' ' || s2.last_name AS student2,
+    s1.major
+FROM students s1
+CROSS JOIN students s2
+WHERE s1.student_id < s2.student_id  -- Избежать дубликатов (A-B и B-A)
+  AND s1.major = s2.major
+  AND s1.city = s2.city
+ORDER BY s1.major, s1.city;
+```
+
+### SELF JOIN — Самообъединение
+
+SELF JOIN — это объединение таблицы с самой собой, полезно для иерархических данных.
+
+```sql
+-- Добавим поле mentor_id в таблицу студентов
+ALTER TABLE students ADD COLUMN mentor_id INTEGER REFERENCES students(student_id);
+
+UPDATE students SET mentor_id = 3 WHERE student_id IN (1, 5, 9);  -- Ольга - ментор
+UPDATE students SET mentor_id = 8 WHERE student_id IN (2, 6);     -- Александр - ментор
+
+-- Найти студентов и их менторов
+SELECT 
+    s.first_name || ' ' || s.last_name AS student,
+    s.year AS student_year,
+    m.first_name || ' ' || m.last_name AS mentor,
+    m.year AS mentor_year
+FROM students s
+LEFT JOIN students m ON s.mentor_id = m.student_id
+ORDER BY mentor, student;
+
+-- Студенты одного курса одной специальности
+SELECT 
+    s1.first_name || ' ' || s1.last_name AS student1,
+    s2.first_name || ' ' || s2.last_name AS student2,
+    s1.major,
+    s1.year
+FROM students s1
+INNER JOIN students s2 ON s1.major = s2.major 
+                       AND s1.year = s2.year
+                       AND s1.student_id < s2.student_id
+ORDER BY s1.major, s1.year;
+```
+
+### Комплексные JOIN запросы
+
+```sql
+-- Детальный отчет по студенту: курсы, оценки, экзамены
+SELECT 
+    s.first_name || ' ' || s.last_name AS student,
+    s.major,
+    s.gpa,
+    c.course_name,
+    c.credits,
+    p.first_name || ' ' || p.last_name AS professor,
+    e.grade AS final_grade,
+    e.status,
+    AVG(er.score) AS avg_exam_score,
+    COUNT(DISTINCT ex.exam_id) AS exams_taken
+FROM students s
+INNER JOIN enrollments e ON s.student_id = e.student_id
+INNER JOIN courses c ON e.course_id = c.course_id
+INNER JOIN professors p ON c.professor_id = p.professor_id
+LEFT JOIN exams ex ON c.course_id = ex.course_id
+LEFT JOIN exam_results er ON ex.exam_id = er.exam_id 
+                          AND er.student_id = s.student_id
+WHERE s.student_id = 1
+GROUP BY s.student_id, s.first_name, s.last_name, s.major, s.gpa,
+         c.course_name, c.credits, p.first_name, p.last_name, 
+         e.grade, e.status
+ORDER BY c.course_name;
+
+-- Топ студентов по среднему баллу на экзаменах
+SELECT 
+    s.first_name || ' ' || s.last_name AS student,
+    s.major,
+    s.gpa AS official_gpa,
+    COUNT(DISTINCT er.exam_id) AS exams_taken,
+    ROUND(AVG(er.score / ex.max_score * 100), 2) AS avg_exam_percentage,
+    STRING_AGG(DISTINCT c.course_name, ', ') AS courses
+FROM students s
+INNER JOIN exam_results er ON s.student_id = er.student_id
+INNER JOIN exams ex ON er.exam_id = ex.exam_id
+INNER JOIN courses c ON ex.course_id = c.course_id
+GROUP BY s.student_id, s.first_name, s.last_name, s.major, s.gpa
+HAVING COUNT(DISTINCT er.exam_id) >= 2
+ORDER BY avg_exam_percentage DESC
+LIMIT 10;
+```
+
+
+## Подзапросы (Subqueries)
+
+### Скалярные подзапросы
+
+Скалярный подзапрос возвращает одно значение (одна строка, одна колонка).
+
+```sql
+-- Студенты с GPA выше среднего
+SELECT 
+    first_name,
+    last_name,
+    gpa,
+    (SELECT AVG(gpa) FROM students) AS avg_gpa,
+    gpa - (SELECT AVG(gpa) FROM students) AS difference
+FROM students
+WHERE gpa > (SELECT AVG(gpa) FROM students)
+ORDER BY gpa DESC;
+
+-- Курсы с количеством студентов выше среднего
+SELECT 
+    c.course_name,
+    COUNT(e.student_id) AS enrolled,
+    (SELECT AVG(course_count) 
+     FROM (
+         SELECT COUNT(student_id) AS course_count 
+         FROM enrollments 
+         WHERE status = 'active'
+         GROUP BY course_id
+     ) AS avg_calc) AS avg_enrollment
+FROM courses c
+LEFT JOIN enrollments e ON c.course_id = e.course_id 
+WHERE e.status = 'active' OR e.status IS NULL
+GROUP BY c.course_id, c.course_name
+HAVING COUNT(e.student_id) > (
+    SELECT AVG(course_count) 
+    FROM (
+        SELECT COUNT(student_id) AS course_count 
+        FROM enrollments 
+        WHERE status = 'active'
+        GROUP BY course_id
+    ) AS avg_calc
+);
+
+-- Подзапрос в SELECT для каждой строки
+SELECT 
+    s.first_name || ' ' || s.last_name AS student,
+    s.major,
+    (SELECT COUNT(*) 
+     FROM enrollments e 
+     WHERE e.student_id = s.student_id) AS total_enrollments,
+    (SELECT COUNT(*) 
+     FROM enrollments e 
+     WHERE e.student_id = s.student_id 
+       AND e.status = 'completed') AS completed_courses,
+    (SELECT AVG(er.score)
+     FROM exam_results er
+     WHERE er.student_id = s.student_id) AS avg_exam_score
+FROM students s
+ORDER BY s.last_name;
+```
+
+### Табличные подзапросы в FROM
+
+Подзапрос в FROM создает временную таблицу (производную таблицу).
+
+```sql
+-- Статистика по специальностям
+SELECT 
+    major,
+    student_count,
+    avg_gpa,
+    max_gpa,
+    min_gpa
+FROM (
+    SELECT 
+        major,
+        COUNT(*) AS student_count,
+        ROUND(AVG(gpa), 2) AS avg_gpa,
+        MAX(gpa) AS max_gpa,
+        MIN(gpa) AS min_gpa
+    FROM students
+    GROUP BY major
+) AS major_stats
+WHERE student_count > 2
+ORDER BY avg_gpa DESC;
+
+-- Сложная аналитика с несколькими подзапросами
+SELECT 
+    cs.course_name,
+    cs.enrolled_count,
+    es.avg_score,
+    ps.professor_name,
+    ps.department
+FROM (
+    -- Подзапрос: курсы и количество студентов
+    SELECT 
+        c.course_id,
+        c.course_name,
+        c.professor_id,
+        COUNT(e.student_id) AS enrolled_count
+    FROM courses c
+    LEFT JOIN enrollments e ON c.course_id = e.course_id 
+    WHERE e.status = 'active' OR e.status IS NULL
+    GROUP BY c.course_id, c.course_name, c.professor_id
+) AS cs
+LEFT JOIN (
+    -- Подзапрос: средний балл по курсам
+    SELECT 
+        c.course_id,
+        ROUND(AVG(er.score / ex.max_score * 100), 2) AS avg_score
+    FROM courses c
+    JOIN exams ex ON c.course_id = ex.course_id
+    JOIN exam_results er ON ex.exam_id = er.exam_id
+    GROUP BY c.course_id
+) AS es ON cs.course_id = es.course_id
+JOIN (
+    -- Подзапрос: информация о профессоре
+    SELECT 
+        professor_id,
+        first_name || ' ' || last_name AS professor_name,
+        department
+    FROM professors
+) AS ps ON cs.professor_id = ps.professor_id
+ORDER BY cs.enrolled_count DESC;
+```
+
+### IN и NOT IN
+
+```sql
+-- Студенты, записанные на курсы информатики
+SELECT 
+    first_name,
+    last_name,
+    major
+FROM students
+WHERE student_id IN (
+    SELECT DISTINCT e.student_id
+    FROM enrollments e
+    JOIN courses c ON e.course_id = c.course_id
+    WHERE c.department = 'Информатика'
+)
+ORDER BY last_name;
+
+-- Профессора, не ведущие курсы в текущем семестре
+SELECT 
+    first_name || ' ' || last_name AS professor,
+    department
+FROM professors
+WHERE professor_id NOT IN (
+    SELECT professor_id
+    FROM courses
+    WHERE semester = 'Fall 2024'
+      AND professor_id IS NOT NULL
+);
+
+-- Студенты, которые НЕ сдавали экзамены
+SELECT 
+    s.first_name,
+    s.last_name,
+    s.major,
+    COUNT(e.course_id) AS enrolled_courses
+FROM students s
+LEFT JOIN enrollments e ON s.student_id = e.student_id
+WHERE s.student_id NOT IN (
+    SELECT DISTINCT student_id 
+    FROM exam_results
+)
+GROUP BY s.student_id, s.first_name, s.last_name, s.major
+ORDER BY enrolled_courses DESC;
+```
+
+:::warning NOT IN с NULL
+Будьте осторожны с `NOT IN` когда подзапрос может вернуть NULL. Это может привести к неожиданным результатам. Используйте `NOT EXISTS` или добавьте `WHERE column IS NOT NULL` в подзапросе.
+:::
+
+### EXISTS и NOT EXISTS
+
+```sql
+-- Студенты, у которых ЕСТЬ оценка 'A'
+SELECT 
+    s.first_name,
+    s.last_name,
+    s.gpa
+FROM students s
+WHERE EXISTS (
+    SELECT 1
+    FROM enrollments e
+    WHERE e.student_id = s.student_id
+      AND e.grade = 'A'
+)
+ORDER BY s.gpa DESC;
+
+-- Курсы, на которые НЕТ записей
+SELECT 
+    c.course_name,
+    c.course_code,
+    c.max_students,
+    p.first_name || ' ' || p.last_name AS professor
+FROM courses c
+JOIN professors p ON c.professor_id = p.professor_id
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM enrollments e
+    WHERE e.course_id = c.course_id
+)
+ORDER BY c.course_name;
+
+-- Студенты, сдававшие хотя бы один экзамен с результатом выше 90%
+SELECT 
+    s.first_name || ' ' || s.last_name AS student,
+    s.major,
+    s.gpa
+FROM students s
+WHERE EXISTS (
+    SELECT 1
+    FROM exam_results er
+    JOIN exams ex ON er.exam_id = ex.exam_id
+    WHERE er.student_id = s.student_id
+      AND (er.score / ex.max_score * 100) >= 90
+)
+ORDER BY s.gpa DESC;
+
+-- EXISTS vs IN: производительность
+-- EXISTS обычно быстрее для больших наборов данных
+-- Эквивалентные запросы:
+
+-- С EXISTS (предпочтительно)
+SELECT first_name, last_name
+FROM students s
+WHERE EXISTS (
+    SELECT 1 FROM enrollments e 
+    WHERE e.student_id = s.student_id
+);
+
+-- С IN
+SELECT first_name, last_name
+FROM students
+WHERE student_id IN (
+    SELECT student_id FROM enrollments
+);
+```
+
+### ANY и ALL
+
+```sql
+-- Студенты с GPA выше, чем у ЛЮБОГО студента физики
+SELECT 
+    first_name,
+    last_name,
+    major,
+    gpa
+FROM students
+WHERE gpa > ANY (
+    SELECT gpa FROM students WHERE major = 'Физика'
+)
+  AND major != 'Физика'
+ORDER BY gpa DESC;
+
+-- = ANY эквивалентно IN
+SELECT first_name, last_name
+FROM students
+WHERE major = ANY (ARRAY['Информатика', 'Математика']);
+
+-- Студенты с GPA выше, чем у ВСЕХ студентов физики
+SELECT 
+    first_name,
+    last_name,
+    major,
+    gpa
+FROM students
+WHERE gpa > ALL (
+    SELECT gpa FROM students WHERE major = 'Физика'
+)
+ORDER BY gpa DESC;
+
+-- Курсы, где ВСЕ оценки — A или B
+SELECT 
+    c.course_name,
+    COUNT(e.enrollment_id) AS total_grades
+FROM courses c
+JOIN enrollments e ON c.course_id = e.course_id
+WHERE e.grade IS NOT NULL
+GROUP BY c.course_id, c.course_name
+HAVING NOT EXISTS (
+    SELECT 1
+    FROM enrollments e2
+    WHERE e2.course_id = c.course_id
+      AND e2.grade NOT IN ('A', 'B')
+      AND e2.grade IS NOT NULL
+);
+```
+
+### Коррелированные подзапросы
+
+Коррелированный подзапрос ссылается на столбцы внешнего запроса.
+
+```sql
+-- Студенты с GPA выше среднего по их специальности
+SELECT 
+    s.first_name,
+    s.last_name,
+    s.major,
+    s.gpa,
+    (SELECT ROUND(AVG(gpa), 2) 
+     FROM students s2 
+     WHERE s2.major = s.major) AS major_avg_gpa
+FROM students s
+WHERE s.gpa > (
+    SELECT AVG(gpa)
+    FROM students s2
+    WHERE s2.major = s.major
+)
+ORDER BY s.major, s.gpa DESC;
+
+-- Для каждого курса — студент с наивысшим баллом на экзамене
+SELECT 
+    c.course_name,
+    (SELECT s.first_name || ' ' || s.last_name
+     FROM exam_results er
+     JOIN students s ON er.student_id = s.student_id
+     JOIN exams ex ON er.exam_id = ex.exam_id
+     WHERE ex.course_id = c.course_id
+     ORDER BY er.score DESC
+     LIMIT 1) AS top_student,
+    (SELECT MAX(er.score)
+     FROM exam_results er
+     JOIN exams ex ON er.exam_id = ex.exam_id
+     WHERE ex.course_id = c.course_id) AS highest_score
+FROM courses c
+WHERE EXISTS (
+    SELECT 1 FROM exams WHERE course_id = c.course_id
+)
+ORDER BY c.course_name;
+
+-- Курсы с количеством студентов выше среднего по факультету
+SELECT 
+    c.course_name,
+    c.department,
+    COUNT(e.student_id) AS enrolled,
+    (SELECT ROUND(AVG(course_count))
+     FROM (
+         SELECT COUNT(e2.student_id) AS course_count
+         FROM courses c2
+         LEFT JOIN enrollments e2 ON c2.course_id = e2.course_id
+         WHERE c2.department = c.department
+           AND (e2.status = 'active' OR e2.status IS NULL)
+         GROUP BY c2.course_id
+     ) AS dept_avg) AS dept_avg_enrollment
+FROM courses c
+LEFT JOIN enrollments e ON c.course_id = e.course_id AND e.status = 'active'
+GROUP BY c.course_id, c.course_name, c.department
+HAVING COUNT(e.student_id) > (
+    SELECT AVG(course_count)
+    FROM (
+        SELECT COUNT(e2.student_id) AS course_count
+        FROM courses c2
+        LEFT JOIN enrollments e2 ON c2.course_id = e2.course_id
+        WHERE c2.department = c.department
+          AND (e2.status = 'active' OR e2.status IS NULL)
+        GROUP BY c2.course_id
+    ) AS dept_avg
+);
+```
+
+## Агрегатные функции
+
+### Основные агрегатные функции
+
+```sql
+-- COUNT — подсчет
+SELECT 
+    COUNT(*) AS total_students,
+    COUNT(DISTINCT major) AS unique_majors,
+    COUNT(mentor_id) AS students_with_mentors,  -- Не считает NULL
+    COUNT(*) - COUNT(mentor_id) AS without_mentors
+FROM students;
+
+-- SUM — сумма
+SELECT 
+    department,
+    COUNT(*) AS professor_count,
+    SUM(salary) AS total_payroll,
+    ROUND(SUM(salary) / COUNT(*), 2) AS avg_salary_check
+FROM professors
+GROUP BY department
+ORDER BY total_payroll DESC;
+
+-- AVG — среднее значение
+SELECT 
+    major,
+    COUNT(*) AS student_count,
+    ROUND(AVG(gpa), 3) AS avg_gpa,
+    ROUND(AVG(EXTRACT(YEAR FROM AGE(date_of_birth))), 1) AS avg_age
+FROM students
+GROUP BY major
+ORDER BY avg_gpa DESC;
+
+-- MIN и MAX — минимум и максимум
+SELECT 
+    major,
+    MIN(gpa) AS lowest_gpa,
+    MAX(gpa) AS highest_gpa,
+    MAX(gpa) - MIN(gpa) AS gpa_range,
+    MIN(enrollment_date) AS earliest_enrollment,
+    MAX(enrollment_date) AS latest_enrollment
+FROM students
+GROUP BY major;
+
+-- Комбинация всех агрегатных функций
+SELECT 
+    c.department,
+    COUNT(DISTINCT c.course_id) AS courses_offered,
+    COUNT(DISTINCT e.student_id) AS unique_students,
+    COUNT(e.enrollment_id) AS total_enrollments,
+    ROUND(AVG(c.credits), 2) AS avg_credits,
+    MIN(c.credits) AS min_credits,
+    MAX(c.credits) AS max_credits,
+    SUM(c.credits) AS total_credits
+FROM courses c
+LEFT JOIN enrollments e ON c.course_id = e.course_id
+GROUP BY c.department
+ORDER BY unique_students DESC;
+```
+
+### GROUP BY с множественными колонками
+
+```sql
+-- Группировка по нескольким полям
+SELECT 
+    major,
+    year,
+    city,
+    COUNT(*) AS student_count,
+    ROUND(AVG(gpa), 2) AS avg_gpa
+FROM students
+GROUP BY major, year, city
+ORDER BY major, year, city;
+
+-- Группировка с вычисляемыми полями
+SELECT 
+    EXTRACT(YEAR FROM enrollment_date) AS enrollment_year,
+    major,
+    COUNT(*) AS students_enrolled,
+    ROUND(AVG(gpa), 2) AS avg_gpa
+FROM students
+GROUP BY EXTRACT(YEAR FROM enrollment_date), major
+ORDER BY enrollment_year DESC, students_enrolled DESC;
+
+-- Группировка по диапазонам
+SELECT 
+    CASE 
+        WHEN gpa >= 3.7 THEN 'Excellent (3.7+)'
+        WHEN gpa >= 3.3 THEN 'Good (3.3-3.69)'
+        WHEN gpa >= 3.0 THEN 'Satisfactory (3.0-3.29)'
+        ELSE 'Below Average (<3.0)'
+    END AS performance_category,
+    major,
+    COUNT(*) AS student_count,
+    ROUND(AVG(gpa), 2) AS avg_gpa_in_category
+FROM students
+GROUP BY 
+    CASE 
+        WHEN gpa >= 3.7 THEN 'Excellent (3.7+)'
+        WHEN gpa >= 3.3 THEN 'Good (3.3-3.69)'
+        WHEN gpa >= 3.0 THEN 'Satisfactory (3.0-3.29)'
+        ELSE 'Below Average (<3.0)'
+    END,
+    major
+ORDER BY major, avg_gpa_in_category DESC;
+```
+
+### HAVING — Фильтрация групп
+
+```sql
+-- Базовый HAVING
+SELECT 
+    major,
+    COUNT(*) AS student_count,
+    ROUND(AVG(gpa), 2) AS avg_gpa
+FROM students
+GROUP BY major
+HAVING COUNT(*) >= 3
+ORDER BY avg_gpa DESC;
+
+-- HAVING с множественными условиями
+SELECT 
+    c.department,
+    COUNT(DISTINCT c.course_id) AS course_count,
+    COUNT(DISTINCT e.student_id) AS student_count,
+    ROUND(AVG(c.credits), 2) AS avg_credits
+FROM courses c
+JOIN enrollments e ON c.course_id = e.course_id
+WHERE e.status = 'active'
+GROUP BY c.department
+HAVING COUNT(DISTINCT c.course_id) >= 2
+   AND COUNT(DISTINCT e.student_id) >= 5
+ORDER BY student_count DESC;
+
+-- WHERE vs HAVING
+SELECT 
+    major,
+    year,
+    COUNT(*) AS student_count,
+    ROUND(AVG(gpa), 2) AS avg_gpa
+FROM students
+WHERE city = 'Москва'  -- Фильтр ДО группировки
+GROUP BY major, year
+HAVING AVG(gpa) > 3.5  -- Фильтр ПОСЛЕ группировки
+ORDER BY avg_gpa DESC;
+
+-- HAVING с подзапросами
+SELECT 
+    p.department,
+    COUNT(*) AS professor_count,
+    ROUND(AVG(p.salary), 2) AS avg_salary
+FROM professors p
+GROUP BY p.department
+HAVING AVG(p.salary) > (
+    SELECT AVG(salary) FROM professors
+)
+ORDER BY avg_salary DESC;
+```
+
+### Агрегатные функции для строк
+
+```sql
+-- STRING_AGG — объединение строк
+SELECT 
+    c.course_name,
+    STRING_AGG(s.first_name || ' ' || s.last_name, ', ' ORDER BY s.last_name) AS enrolled_students
+FROM courses c
+JOIN enrollments e ON c.course_id = e.course_id
+JOIN students s ON e.student_id = s.student_id
+WHERE e.status = 'active'
+GROUP BY c.course_id, c.course_name
+ORDER BY c.course_name;
+
+-- ARRAY_AGG — создание массива
+SELECT 
+    major,
+    ARRAY_AGG(first_name || ' ' || last_name ORDER BY gpa DESC) AS students,
+    ARRAY_AGG(gpa ORDER BY gpa DESC) AS gpas
+FROM students
+GROUP BY major;
+
+-- JSON_AGG — создание JSON массива
+SELECT 
+    p.first_name || ' ' || p.last_name AS professor,
+    JSON_AGG(
+        JSON_BUILD_OBJECT(
+            'course_name', c.course_name,
+            'course_code', c.course_code,
+            'credits', c.credits,
+            'students', (
+                SELECT COUNT(*) 
+                FROM enrollments 
+                WHERE course_id = c.course_id 
+                  AND status = 'active'
+            )
+        ) ORDER BY c.course_name
+    ) AS courses
+FROM professors p
+LEFT JOIN courses c ON p.professor_id = c.professor_id
+GROUP BY p.professor_id, p.first_name, p.last_name;
+```
+
+### Статистические агрегатные функции
+
+```sql
+-- STDDEV — стандартное отклонение
+-- VARIANCE — дисперсия
+SELECT 
+    major,
+    COUNT(*) AS students,
+    ROUND(AVG(gpa), 2) AS avg_gpa,
+    ROUND(STDDEV(gpa), 3) AS stddev_gpa,
+    ROUND(VARIANCE(gpa), 3) AS variance_gpa,
+    MIN(gpa) AS min_gpa,
+    MAX(gpa) AS max_gpa
+FROM students
+GROUP BY major
+HAVING COUNT(*) >= 3
+ORDER BY avg_gpa DESC;
+
+-- PERCENTILE_CONT — процентили (непрерывное распределение)
+-- PERCENTILE_DISC — процентили (дискретное распределение)
+SELECT 
+    major,
+    PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY gpa) AS gpa_25th,
+    PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY gpa) AS gpa_median,
+    PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY gpa) AS gpa_75th,
+    PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY gpa) AS gpa_90th
+FROM students
+GROUP BY major
+ORDER BY gpa_median DESC;
+
+-- MODE — мода (наиболее частое значение)
+SELECT 
+    MODE() WITHIN GROUP (ORDER BY major) AS most_common_major,
+    MODE() WITHIN GROUP (ORDER BY city) AS most_common_city,
+    MODE() WITHIN GROUP (ORDER BY year) AS most_common_year
+FROM students;
+```
+
+### FILTER — Условная агрегация
+
+```sql
+-- FILTER для условных агрегаций (PostgreSQL 9.4+)
+SELECT 
+    major,
+    COUNT(*) AS total_students,
+    COUNT(*) FILTER (WHERE gpa >= 3.7) AS excellent_students,
+    COUNT(*) FILTER (WHERE gpa >= 3.3 AND gpa < 3.7) AS good_students,
+    COUNT(*) FILTER (WHERE gpa < 3.0) AS struggling_students,
+    ROUND(AVG(gpa) FILTER (WHERE year >= 3), 2) AS senior_avg_gpa
+FROM students
+GROUP BY major
+ORDER BY total_students DESC;
+
+-- Сравнение с CASE
+-- Эквивалентные запросы:
+
+-- С FILTER (современный способ)
+SELECT 
+    department,
+    COUNT(*) FILTER (WHERE salary > 120000) AS high_earners,
+    COUNT(*) FILTER (WHERE salary <= 120000) AS regular_earners
+FROM professors
+GROUP BY department;
+
+-- С CASE (старый способ)
+SELECT 
+    department,
+    COUNT(CASE WHEN salary > 120000 THEN 1 END) AS high_earners,
+    COUNT(CASE WHEN salary <= 120000 THEN 1 END) AS regular_earners
+FROM professors
+GROUP BY department;
+
+-- Сложная аналитика с FILTER
+SELECT 
+    c.course_name,
+    COUNT(DISTINCT e.student_id) AS total_enrolled,
+    COUNT(DISTINCT e.student_id) FILTER (WHERE e.status = 'completed') AS completed,
+    COUNT(DISTINCT e.student_id) FILTER (WHERE e.status = 'dropped') AS dropped,
+    COUNT(DISTINCT e.student_id) FILTER (WHERE e.grade IN ('A', 'B')) AS ab_grades,
+    ROUND(
+        COUNT(DISTINCT e.student_id) FILTER (WHERE e.grade IN ('A', 'B'))::NUMERIC / 
+        NULLIF(COUNT(DISTINCT e.student_id) FILTER (WHERE e.status = 'completed'), 0) * 100,
+        2
+    ) AS success_rate
+FROM courses c
+LEFT JOIN enrollments e ON c.course_id = e.course_id
+GROUP BY c.course_id, c.course_name
+ORDER BY success_rate DESC NULLS LAST;
+```
+
+## Продвинутые техники SELECT
+
+### DISTINCT ON — Уникальные записи по критерию
+
+```sql
+-- Первая запись для каждого студента (последняя по дате)
+SELECT DISTINCT ON (student_id)
+    student_id,
+    course_id,
+    enrollment_date,
+    grade,
+    status
+FROM enrollments
+ORDER BY student_id, enrollment_date DESC;
+
+-- Последний экзамен каждого типа для каждого курса
+SELECT DISTINCT ON (course_id, exam_type)
+    c.course_name,
+    e.exam_type,
+    e.exam_date,
+    e.max_score
+FROM exams e
+JOIN courses c ON e.course_id = c.course_id
+ORDER BY course_id, exam_type, exam_date DESC;
+
+-- Лучший результат каждого студента на экзаменах
+SELECT DISTINCT ON (er.student_id)
+    s.first_name || ' ' || s.last_name AS student,
+    c.course_name,
+    e.exam_type,
+    er.score,
+    e.max_score,
+    ROUND(er.score / e.max_score * 100, 2) AS percentage
+FROM exam_results er
+JOIN students s ON er.student_id = s.student_id
+JOIN exams e ON er.exam_id = e.exam_id
+JOIN courses c ON e.course_id = c.course_id
+ORDER BY er.student_id, (er.score / e.max_score) DESC;
+```
+
+### LATERAL JOIN — Боковое объединение
+
+LATERAL позволяет подзапросу ссылаться на колонки из предыдущих таблиц в FROM.
+
+```sql
+-- Для каждого профессора — топ-3 студента по среднему баллу на экзаменах
+SELECT 
+    p.first_name || ' ' || p.last_name AS professor,
+    top_students.student_name,
+    top_students.avg_score,
+    top_students.exams_taken
+FROM professors p
+CROSS JOIN LATERAL (
+    SELECT 
+        s.first_name || ' ' || s.last_name AS student_name,
+        ROUND(AVG(er.score), 2) AS avg_score,
+        COUNT(er.exam_id) AS exams_taken
+    FROM courses c
+    JOIN exams ex ON c.course_id = ex.course_id
+    JOIN exam_results er ON ex.exam_id = er.exam_id
+    JOIN students s ON er.student_id = s.student_id
+    WHERE c.professor_id = p.professor_id
+    GROUP BY s.student_id, s.first_name, s.last_name
+    ORDER BY AVG(er.score) DESC
+    LIMIT 3
+) AS top_students
+ORDER BY professor, top_students.avg_score DESC;
+
+-- Для каждого курса — последние 3 записи
+SELECT 
+    c.course_name,
+    recent_enrollments.student_name,
+    recent_enrollments.enrollment_date
+FROM courses c
+CROSS JOIN LATERAL (
+    SELECT 
+        s.first_name || ' ' || s.last_name AS student_name,
+        e.enrollment_date
+    FROM enrollments e
+    JOIN students s ON e.student_id = s.student_id
+    WHERE e.course_id = c.course_id
+    ORDER BY e.enrollment_date DESC
+    LIMIT 3
+) AS recent_enrollments
+ORDER BY c.course_name, recent_enrollments.enrollment_date DESC;
+
+-- LATERAL с LEFT JOIN (для всех профессоров, даже без студентов)
+SELECT 
+    p.first_name || ' ' || p.last_name AS professor,
+    COALESCE(top_student.student_name, 'No students') AS best_student,
+    top_student.avg_score
+FROM professors p
+LEFT JOIN LATERAL (
+    SELECT 
+        s.first_name || ' ' || s.last_name AS student_name,
+        ROUND(AVG(er.score), 2) AS avg_score
+    FROM courses c
+    JOIN exams ex ON c.course_id = ex.course_id
+    JOIN exam_results er ON ex.exam_id = er.exam_id
+    JOIN students s ON er.student_id = s.student_id
+    WHERE c.professor_id = p.professor_id
+    GROUP BY s.student_id, s.first_name, s.last_name
+    ORDER BY AVG(er.score) DESC
+    LIMIT 1
+) AS top_student ON TRUE
+ORDER BY professor;
+```
+
+### UNION, INTERSECT, EXCEPT
+
+```sql
+-- UNION — объединение результатов (без дубликатов)
+SELECT first_name, last_name, 'Student' AS role, major AS department
+FROM students
+WHERE city = 'Москва'
+UNION
+SELECT first_name, last_name, 'Professor' AS role, department
+FROM professors
+ORDER BY last_name;
+
+-- UNION ALL — с дубликатами (быстрее)
+SELECT course_id, 'Enrollment' AS source, COUNT(*) AS count
+FROM enrollments
+GROUP BY course_id
+UNION ALL
+SELECT course_id, 'Exam' AS source, COUNT(*) AS count
+FROM exams
+GROUP BY course_id
+ORDER BY course_id, source;
+
+-- INTERSECT — пересечение (общие записи)
+SELECT student_id
+FROM enrollments
+WHERE course_id IN (
+    SELECT course_id FROM courses WHERE department = 'Информатика'
+)
+INTERSECT
+SELECT student_id
+FROM enrollments
+WHERE course_id IN (
+    SELECT course_id FROM courses WHERE department = 'Математика'
+)
+ORDER BY student_id;
+
+-- EXCEPT — разность (в первом, но не во втором)
+SELECT student_id
+FROM students
+WHERE major = 'Информатика'
+EXCEPT
+SELECT DISTINCT student_id
+FROM enrollments
+WHERE course_id IN (
+    SELECT course_id FROM courses WHERE course_code LIKE 'CS%'
+)
+ORDER BY student_id;
+
+-- Комбинация операторов с подзапросами
+(SELECT 'High GPA Students' AS category, COUNT(*) AS count
+ FROM students WHERE gpa >= 3.7)
+UNION ALL
+(SELECT 'Courses with Exams', COUNT(DISTINCT course_id)
+ FROM exams)
+UNION ALL
+(SELECT 'Active Enrollments', COUNT(*)
+ FROM enrollments WHERE status = 'active');
+```
+
+### Common Table Expressions (CTE)
+
+CTE делают сложные запросы более читаемыми.
+
+```sql
+-- Простой CTE
+WITH high_performers AS (
+    SELECT 
+        student_id,
+        first_name,
+        last_name,
+        gpa
+    FROM students
+    WHERE gpa >= 3.7
+)
+SELECT 
+    hp.first_name || ' ' || hp.last_name AS student,
+    hp.gpa,
+    c.course_name,
+    e.grade
+FROM high_performers hp
+JOIN enrollments e ON hp.student_id = e.student_id
+JOIN courses c ON e.course_id = c.course_id
+WHERE e.status = 'completed'
+ORDER BY hp.gpa DESC, c.course_name;
+
+-- Множественные CTE
+WITH 
+course_stats AS (
+    SELECT 
+        course_id,
+        COUNT(DISTINCT student_id) AS enrolled_count,
+        COUNT(*) FILTER (WHERE grade IN ('A', 'B')) AS ab_count
+    FROM enrollments
+    WHERE status = 'completed'
+    GROUP BY course_id
+),
+exam_stats AS (
+    SELECT 
+        ex.course_id,
+        AVG(er.score / ex.max_score * 100) AS avg_percentage
+    FROM exams ex
+    JOIN exam_results er ON ex.exam_id = er.exam_id
+    GROUP BY ex.course_id
+)
+SELECT 
+    c.course_name,
+    cs.enrolled_count,
+    cs.ab_count,
+    ROUND(cs.ab_count::NUMERIC / NULLIF(cs.enrolled_count, 0) * 100, 2) AS ab_rate,
+    ROUND(es.avg_percentage, 2) AS avg_exam_score
+FROM courses c
+LEFT JOIN course_stats cs ON c.course_id = cs.course_id
+LEFT JOIN exam_stats es ON c.course_id = es.course_id
+WHERE cs.enrolled_count IS NOT NULL
+ORDER BY ab_rate DESC NULLS LAST;
+
+-- Рекурсивный CTE (для иерархических данных)
+WITH RECURSIVE student_mentors AS (
+    -- Базовый случай: студенты без менторов
+    SELECT 
+        student_id,
+        first_name || ' ' || last_name AS name,
+        mentor_id,
+        1 AS level,
+        ARRAY[student_id] AS path
+    FROM students
+    WHERE mentor_id IS NULL
+    
+    UNION ALL
+    
+    -- Рекурсивный случай: студенты с менторами
+    SELECT 
+        s.student_id,
+        s.first_name || ' ' || s.last_name,
+        s.mentor_id,
+        sm.level + 1,
+        sm.path || s.student_id
+    FROM students s
+    JOIN student_mentors sm ON s.mentor_id = sm.student_id
+    WHERE NOT s.student_id = ANY(sm.path)  -- Избежать циклов
+)
+SELECT 
+    REPEAT('  ', level - 1) || name AS hierarchy,
+    level,
+    mentor_id
+FROM student_mentors
+ORDER BY path;
+```

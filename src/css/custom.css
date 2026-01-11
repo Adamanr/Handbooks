@@ -183,7 +183,7 @@ pre[class*="language-"] {
     tab-size: 4;
     border-radius: 12px;
     position: relative;
-    overflow: hidden;
+
     box-shadow: var(--shadow-md);
     transition: box-shadow var(--transition-base);
 }

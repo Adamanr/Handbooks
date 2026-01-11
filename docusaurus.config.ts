@@ -145,18 +145,6 @@ const config: Config = {
               label: "🦫 Go",
               docsPluginId: "go",
             },
-            {
-              type: "docSidebar",
-              sidebarId: "elixirSidebar",
-              label: "🧪 Elixir",
-              docsPluginId: "elixir",
-            },
-            {
-              type: "docSidebar",
-              sidebarId: "rustSidebar",
-              label: "🦀 Rust",
-              docsPluginId: "rust",
-            },
           ],
         },
         {
@@ -170,16 +158,9 @@ const config: Config = {
               label: "🐘 PostgreSQL",
               docsPluginId: "postgresql",
             },
-            {
-              type: "docSidebar",
-              sidebarId: "kubernetesSidebar",
-              label: "🐳☸️ Контейнеризация",
-              docsPluginId: "k8s",
-            },
           ],
         },
-        { to: "/blog", label: "📝 Блог", position: "right" },
-        { to: "/about", label: "👨 Обо мне", position: "right" },
+        { to: "/blog", label: "📝 База знаний", position: "right" },
         {
           href: "https://github.com/Adamanr/Handbooks/issues",
           label: "🐛 Нашли ошибку?",

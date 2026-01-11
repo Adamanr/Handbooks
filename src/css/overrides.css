@@ -317,7 +317,7 @@ blockquote:hover {
 table {
     border-collapse: separate;
     border-spacing: 0;
-    overflow: hidden;
+    overflow-x: scroll;
     box-shadow: var(--shadow-md);
 }
 

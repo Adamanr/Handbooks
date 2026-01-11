@@ -4,7 +4,7 @@ adaman:
   url: https://github.com/adamanr
   image_url: https://i.pinimg.com/736x/68/78/49/687849b7834fc551b823592e4abac45f.jpg
   page:
-    permalink: 'all-adaman-articles'
+    permalink: "all-adaman-articles"
   socials:
     linkedin: adamanq
     github: adamanr

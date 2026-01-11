@@ -1,0 +1,2057 @@
+---
+sidebar_position: 1
+title: "Установка, настройка и первое подключение"
+description: "В этой главе мы рассмотрим основы PostgreSQL, включая установку, настройку и базовые команды."
+---
+
+# Установка, настройка и первое подключение. Структура данных PostgreSQL
+
+## Введение
+
+В этом уроке мы подробно рассмотрим процесс установки PostgreSQL на различных операционных системах, выполним первоначальную настройку, научимся подключаться к серверу и изучим внутреннюю структуру хранения данных PostgreSQL. Этот урок является практической основой для работы с PostgreSQL.
+
+## Установка PostgreSQL
+
+### Установка на Linux (Ubuntu/Debian)
+
+#### Метод 1: Установка из официального репозитория PostgreSQL
+
+```bash
+# Добавление официального репозитория PostgreSQL
+sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+
+# Импорт ключа подписи репозитория
+wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+
+# Обновление списка пакетов
+sudo apt update
+
+# Установка PostgreSQL (последняя версия)
+sudo apt install postgresql postgresql-contrib
+
+# Или установка конкретной версии (например, 18)
+sudo apt install postgresql-18 postgresql-contrib-18
+
+# Проверка установки
+psql --version
+# Вывод: psql (PostgreSQL) 18.x
+```
+
+#### Метод 2: Установка из стандартного репозитория
+
+```bash
+# Установка из стандартного репозитория Ubuntu
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+
+# Проверка статуса службы
+sudo systemctl status postgresql
+
+# Автозапуск при загрузке системы
+sudo systemctl enable postgresql
+```
+
+#### Проверка установки
+
+```bash
+# Проверка версии
+sudo -u postgres psql --version
+
+# Проверка запущенных процессов
+ps aux | grep postgres
+
+# Ожидаемый вывод:
+# postgres   1234  ... /usr/lib/postgresql/18/bin/postgres -D /var/lib/postgresql/18/main
+# postgres   1235  ... postgres: checkpointer
+# postgres   1236  ... postgres: background writer
+# postgres   1237  ... postgres: walwriter
+# postgres   1238  ... postgres: autovacuum launcher
+# postgres   1239  ... postgres: logical replication launcher
+```
+
+### Установка на CentOS/RHEL/Fedora
+
+```bash
+# Добавление репозитория PostgreSQL
+sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+
+# Отключение встроенного модуля PostgreSQL (для RHEL/CentOS 8+)
+sudo dnf -qy module disable postgresql
+
+# Установка PostgreSQL 18
+sudo dnf install -y postgresql18-server postgresql18-contrib
+
+# Инициализация БД
+sudo /usr/pgsql-18/bin/postgresql-18-setup initdb
+
+# Запуск и автозапуск
+sudo systemctl enable postgresql-18
+sudo systemctl start postgresql-18
+
+# Проверка статуса
+sudo systemctl status postgresql-18
+```
+
+### Установка на macOS
+
+#### Метод 1: Homebrew (рекомендуется)
+
+```bash
+# Установка Homebrew (если еще не установлен)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Установка PostgreSQL
+brew install postgresql@18
+
+# Запуск службы
+brew services start postgresql@18
+
+# Или запуск без автостарта
+pg_ctl -D /opt/homebrew/var/postgresql@18 start
+
+# Проверка версии
+psql --version
+```
+
+#### Метод 2: Postgres.app (GUI приложение)
+
+```bash
+# Скачайте с https://postgresapp.com/
+# Распакуйте в /Applications
+# Запустите приложение
+# PostgreSQL будет доступен на localhost:5432
+
+# Добавьте в PATH (в ~/.zshrc или ~/.bash_profile)
+export PATH="/Applications/Postgres.app/Contents/Versions/latest/bin:$PATH"
+```
+
+### Установка на Windows
+
+#### Метод 1: Официальный установщик (EnterpriseDB)
+
+1. Скачайте установщик с https://www.postgresql.org/download/windows/
+2. Запустите postgresql-18.x-windows-x64.exe
+3. Следуйте инструкциям мастера установки:
+   - Выберите компоненты (PostgreSQL Server, pgAdmin, Command Line Tools)
+   - Укажите директорию данных (по умолчанию: C:\Program Files\PostgreSQL\18\data)
+   - Установите пароль для суперпользователя postgres
+   - Выберите порт (по умолчанию: 5432)
+   - Выберите локаль (рекомендуется: Default locale или Russian, Russia)
+4. Завершите установку
+
+#### Метод 2: Chocolatey (package manager)
+
+```powershell
+# Установка Chocolatey (PowerShell от администратора)
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+# Установка PostgreSQL
+choco install postgresql18
+
+# Проверка установки
+psql --version
+```
+
+#### Добавление в PATH (если нужно)
+
+```powershell
+# Системные переменные -> Path -> Добавить:
+C:\Program Files\PostgreSQL\18\bin
+```
+
+### Установка через Docker
+
+Docker — отличный способ быстро развернуть PostgreSQL для разработки и тестирования.
+
+```bash
+# Базовый запуск PostgreSQL
+docker run --name postgres-dev \
+  -e POSTGRES_PASSWORD=mysecretpassword \
+  -e POSTGRES_USER=myuser \
+  -e POSTGRES_DB=mydb \
+  -p 5432:5432 \
+  -d postgres:18
+
+# С монтированием volume для сохранения данных
+docker run --name postgres-dev \
+  -e POSTGRES_PASSWORD=mysecretpassword \
+  -e POSTGRES_USER=myuser \
+  -e POSTGRES_DB=mydb \
+  -p 5432:5432 \
+  -v postgres-data:/var/lib/postgresql/data \
+  -d postgres:18
+
+# Подключение к контейнеру
+docker exec -it postgres-dev psql -U myuser -d mydb
+
+# Остановка
+docker stop postgres-dev
+
+# Запуск существующего контейнера
+docker start postgres-dev
+
+# Удаление контейнера
+docker rm postgres-dev
+
+# Удаление volume с данными
+docker volume rm postgres-data
+```
+
+#### Docker Compose для разработки
+
+Создайте файл `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: postgres-dev
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_DB: mydb
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=ru_RU.UTF-8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d  # SQL скрипты при инициализации
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin-dev
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+```
+
+```bash
+# Запуск
+docker-compose up -d
+
+# Просмотр логов
+docker-compose logs -f postgres
+
+# Остановка
+docker-compose down
+
+# Остановка с удалением данных
+docker-compose down -v
+```
+
+:::tip Рекомендация для разработки
+Docker — отличный выбор для локальной разработки. Вы можете быстро создавать, удалять и пересоздавать окружения без влияния на основную систему.
+:::
+
+## Первоначальная настройка после установки
+
+### Проверка службы PostgreSQL
+
+```bash
+# Linux (systemd)
+sudo systemctl status postgresql
+sudo systemctl start postgresql    # Запуск
+sudo systemctl stop postgresql     # Остановка
+sudo systemctl restart postgresql  # Перезапуск
+sudo systemctl enable postgresql   # Автозапуск
+
+# macOS (Homebrew)
+brew services list
+brew services start postgresql@18
+brew services stop postgresql@18
+
+# Windows (Services)
+# Откройте: services.msc
+# Найдите: postgresql-x64-18
+# Управляйте через интерфейс или PowerShell:
+Get-Service postgresql-x64-18
+Start-Service postgresql-x64-18
+Stop-Service postgresql-x64-18
+```
+
+### Первое подключение
+
+#### Linux/macOS
+
+```bash
+# Переключиться на пользователя postgres
+sudo -i -u postgres
+
+# Запустить psql
+psql
+
+# Или в одну команду
+sudo -u postgres psql
+
+# Вывод:
+# psql (18.1)
+# Type "help" for help.
+# postgres=#
+```
+
+#### Windows
+
+```powershell
+# Открыть psql через меню Пуск или cmd
+psql -U postgres
+
+# Введите пароль, установленный при инициализации
+```
+
+### Базовые команды psql
+
+```sql
+-- Справка
+\?                  -- Список всех команд psql
+\h                  -- Справка по SQL командам
+\h SELECT           -- Справка по конкретной команде
+
+-- Информация о базах данных и таблицах
+\l                  -- Список баз данных
+\c dbname           -- Подключиться к БД
+\dt                 -- Список таблиц в текущей БД
+\dt+                -- Список таблиц с размерами
+\d table_name       -- Описание структуры таблицы
+\di                 -- Список индексов
+\dv                 -- Список представлений (views)
+\df                 -- Список функций
+\dn                 -- Список схем
+
+-- Информация о пользователях и правах
+\du                 -- Список ролей (пользователей)
+\dp table_name      -- Права доступа к таблице
+
+-- Выполнение SQL из файла
+\i /path/to/file.sql
+
+-- Вывод результатов в файл
+\o /path/to/output.txt
+SELECT * FROM users;
+\o  -- Вернуть вывод в консоль
+
+-- Настройки отображения
+\x                  -- Расширенный режим (вертикальный вывод)
+\timing             -- Включить отображение времени выполнения
+
+-- Выход
+\q
+```
+
+#### Пример работы в psql
+
+```sql
+-- Подключение к базе данных
+postgres=# \c postgres
+You are now connected to database "postgres" as user "postgres".
+
+-- Создание новой базы данных
+postgres=# CREATE DATABASE testdb;
+CREATE DATABASE
+
+-- Подключение к новой БД
+postgres=# \c testdb
+You are now connected to database "testdb" as user "postgres".
+
+-- Создание таблицы
+testdb=# CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE
+
+-- Просмотр структуры таблицы
+testdb=# \d users
+                                     Table "public.users"
+   Column   |            Type             | Collation | Nullable |              Default              
+------------+-----------------------------+-----------+----------+-----------------------------------
+ id         | integer                     |           | not null | nextval('users_id_seq'::regclass)
+ username   | character varying(50)       |           | not null | 
+ email      | character varying(100)      |           | not null | 
+ created_at | timestamp without time zone |           |          | CURRENT_TIMESTAMP
+Indexes:
+    "users_pkey" PRIMARY KEY, btree (id)
+    "users_email_key" UNIQUE CONSTRAINT, btree (email)
+
+-- Вставка данных
+testdb=# INSERT INTO users (username, email) VALUES ('john_doe', 'john@example.com');
+INSERT 0 1
+
+-- Включение отображения времени
+testdb=# \timing
+Timing is on.
+
+-- Выборка данных
+testdb=# SELECT * FROM users;
+ id | username |      email       |         created_at         
+----+----------+------------------+----------------------------
+  1 | john_doe | john@example.com | 2024-01-08 10:30:45.123456
+(1 row)
+
+Time: 1.234 ms
+```
+
+### Создание нового пользователя (роли)
+
+```sql
+-- Подключиться как postgres
+sudo -u postgres psql
+
+-- Создать нового пользователя
+CREATE USER myuser WITH PASSWORD 'mypassword';
+
+-- Создать базу данных для пользователя
+CREATE DATABASE mydb OWNER myuser;
+
+-- Предоставить все привилегии на БД
+GRANT ALL PRIVILEGES ON DATABASE mydb TO myuser;
+
+-- Подключиться как новый пользователь
+\c mydb myuser
+
+-- Или из командной строки
+psql -U myuser -d mydb -h localhost
+```
+
+#### Различные варианты создания ролей
+
+```sql
+-- Роль с правом создания БД
+CREATE ROLE developer WITH LOGIN PASSWORD 'dev123' CREATEDB;
+
+-- Роль с правом создания других ролей
+CREATE ROLE admin WITH LOGIN PASSWORD 'admin123' CREATEROLE;
+
+-- Суперпользователь (осторожно!)
+CREATE ROLE superuser WITH LOGIN PASSWORD 'super123' SUPERUSER;
+
+-- Роль с ограничением по соединениям
+CREATE ROLE limited_user WITH LOGIN PASSWORD 'pass123' CONNECTION LIMIT 5;
+
+-- Роль с истекающим паролем
+CREATE ROLE temp_user WITH LOGIN PASSWORD 'temp123' VALID UNTIL '2024-12-31';
+
+-- Просмотр всех ролей
+\du
+
+-- Изменение пароля
+ALTER ROLE myuser WITH PASSWORD 'newpassword';
+
+-- Удаление роли
+DROP ROLE myuser;
+```
+
+---
+
+## Конфигурация PostgreSQL
+
+### Основные конфигурационные файлы
+
+PostgreSQL использует три основных конфигурационных файла:
+
+| Файл | Назначение | Расположение |
+|------|-----------|--------------|
+| `postgresql.conf` | Главный конфигурационный файл | `/etc/postgresql/18/main/` (Linux)<br />`/opt/homebrew/var/postgresql@18/` (macOS)<br />`C:\Program Files\PostgreSQL\18\data\` (Windows) |
+| `pg_hba.conf` | Контроль аутентификации клиентов | То же |
+| `pg_ident.conf` | Маппинг пользователей ОС на роли PostgreSQL | То же |
+
+```bash
+# Найти путь к конфигурационным файлам
+sudo -u postgres psql -c "SHOW config_file;"
+sudo -u postgres psql -c "SHOW hba_file;"
+sudo -u postgres psql -c "SHOW data_directory;"
+
+# Или в psql
+SHOW config_file;
+SHOW hba_file;
+SHOW data_directory;
+```
+
+### Редактирование postgresql.conf
+
+```bash
+# Linux
+sudo nano /etc/postgresql/18/main/postgresql.conf
+
+# macOS (Homebrew)
+nano /opt/homebrew/var/postgresql@18/postgresql.conf
+
+# Windows
+notepad "C:\Program Files\PostgreSQL\18\data\postgresql.conf"
+```
+
+#### Основные параметры для настройки
+
+```ini
+# ============= ПОДКЛЮЧЕНИЯ И АУТЕНТИФИКАЦИЯ =============
+
+# Адрес прослушивания
+listen_addresses = 'localhost'          # Только локальные подключения
+# listen_addresses = '*'                # Все интерфейсы (осторожно!)
+# listen_addresses = '192.168.1.100'   # Конкретный IP
+
+# Порт
+port = 5432
+
+# Максимум одновременных подключений
+max_connections = 100
+
+# ============= ПАМЯТЬ =============
+
+# Разделяемая память для кэша (обычно 25% RAM)
+shared_buffers = 256MB                  # Для 1GB RAM
+# shared_buffers = 2GB                  # Для 8GB RAM
+# shared_buffers = 8GB                  # Для 32GB RAM
+
+# Память для сложных операций (сортировка, хэш-таблицы)
+work_mem = 4MB                          # На операцию
+# work_mem = 16MB                       # Для аналитических запросов
+
+# Память для обслуживающих операций (VACUUM, CREATE INDEX)
+maintenance_work_mem = 64MB
+# maintenance_work_mem = 256MB          # Для больших таблиц
+
+# Эффективный размер кэша (для планировщика)
+effective_cache_size = 1GB              # 50-75% RAM
+# effective_cache_size = 6GB            # Для 8GB RAM
+
+# ============= WAL (ЖУРНАЛ ТРАНЗАКЦИЙ) =============
+
+# Уровень детализации WAL
+wal_level = replica                     # minimal, replica, logical
+
+# Размер буферов WAL
+wal_buffers = 16MB
+
+# Минимальный размер WAL файла
+min_wal_size = 80MB
+
+# Максимальный размер WAL между контрольными точками
+max_wal_size = 1GB
+
+# ============= КОНТРОЛЬНЫЕ ТОЧКИ =============
+
+# Время между контрольными точками
+checkpoint_timeout = 5min
+
+# Целевое время завершения контрольной точки (доля от timeout)
+checkpoint_completion_target = 0.9
+
+# ============= РЕПЛИКАЦИЯ =============
+
+# Максимум процессов отправки WAL
+max_wal_senders = 10
+
+# Слоты репликации
+max_replication_slots = 10
+
+# ============= ПЛАНИРОВЩИК ЗАПРОСОВ =============
+
+# Стоимость случайного чтения со страницы
+random_page_cost = 4.0                  # HDD
+# random_page_cost = 1.1                # SSD
+
+# Стоимость последовательного чтения
+seq_page_cost = 1.0
+
+# Параллелизм для I/O операций
+effective_io_concurrency = 2            # HDD
+# effective_io_concurrency = 200        # SSD
+
+# ============= ПАРАЛЛЕЛЬНОЕ ВЫПОЛНЕНИЕ =============
+
+# Максимум воркеров для параллельных запросов
+max_parallel_workers_per_gather = 2
+max_parallel_workers = 8
+max_worker_processes = 8
+
+# ============= ЛОГИРОВАНИЕ =============
+
+# Путь к логам
+log_directory = 'log'
+log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+
+# Ротация логов
+log_rotation_age = 1d
+log_rotation_size = 10MB
+
+# Что логировать
+log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+log_timezone = 'Europe/Moscow'
+
+# Логирование медленных запросов
+log_min_duration_statement = 1000       # ms (запросы дольше 1 секунды)
+
+# Логирование подключений и отключений
+log_connections = on
+log_disconnections = on
+
+# ============= АВТООЧИСТКА (AUTOVACUUM) =============
+
+autovacuum = on                         # Включить автоочистку
+autovacuum_max_workers = 3
+autovacuum_naptime = 1min
+
+# ============= ЛОКАЛЬ И ФОРМАТИРОВАНИЕ =============
+
+datestyle = 'iso, dmy'
+timezone = 'Europe/Moscow'
+lc_messages = 'ru_RU.UTF-8'
+lc_monetary = 'ru_RU.UTF-8'
+lc_numeric = 'ru_RU.UTF-8'
+lc_time = 'ru_RU.UTF-8'
+default_text_search_config = 'pg_catalog.russian'
+```
+
+#### Применение изменений
+
+```bash
+# Перезагрузка конфигурации (без перезапуска сервера)
+sudo systemctl reload postgresql        # Linux
+brew services reload postgresql@18      # macOS
+psql -U postgres -c "SELECT pg_reload_conf();"  # Из SQL
+
+# Полный перезапуск (требуется для некоторых параметров)
+sudo systemctl restart postgresql       # Linux
+brew services restart postgresql@18     # macOS
+
+# Проверка текущих настроек
+psql -U postgres -c "SHOW shared_buffers;"
+psql -U postgres -c "SHOW work_mem;"
+```
+
+:::warning Важно
+Некоторые параметры (например, `shared_buffers`, `max_connections`) требуют полного перезапуска сервера. Параметры, которые можно изменить без перезапуска, помечены в документации как "reload".
+:::
+
+###  Настройка pg_hba.conf (аутентификация)
+
+`pg_hba.conf` (Host-Based Authentication) контролирует, кто может подключаться к серверу.
+
+#### Формат записи
+
+```
+# TYPE  DATABASE  USER  ADDRESS      METHOD
+```
+
+- **TYPE**: `local` (Unix socket), `host` (TCP/IP), `hostssl` (SSL), `hostnossl` (без SSL)
+- **DATABASE**: имя БД или `all`
+- **USER**: имя пользователя или `all`
+- **ADDRESS**: CIDR или `all`
+- **METHOD**: `trust`, `reject`, `md5`, `scram-sha-256`, `peer`, `ident`
+
+#### Примеры конфигурации
+
+```bash
+# Редактирование
+sudo nano /etc/postgresql/18/main/pg_hba.conf
+```
+
+```ini
+# ========= ЛОКАЛЬНЫЕ ПОДКЛЮЧЕНИЯ =========
+
+# Локальные подключения через Unix socket без пароля (метод peer)
+local   all             postgres                                peer
+
+# Локальные подключения для всех пользователей с паролем
+local   all             all                                     scram-sha-256
+
+# ========= IPv4 ПОДКЛЮЧЕНИЯ =========
+
+# Localhost с паролем
+host    all             all             127.0.0.1/32            scram-sha-256
+
+# Вся локальная сеть (192.168.1.0/24)
+host    all             all             192.168.1.0/24          scram-sha-256
+
+# Конкретный пользователь с конкретного IP
+host    mydb            myuser          192.168.1.100/32        scram-sha-256
+
+# Любые подключения (НЕБЕЗОПАСНО для продакшена!)
+# host    all             all             0.0.0.0/0               scram-sha-256
+
+# ========= IPv6 ПОДКЛЮЧЕНИЯ =========
+
+host    all             all             ::1/128                 scram-sha-256
+
+# ========= SSL ПОДКЛЮЧЕНИЯ =========
+
+# Требовать SSL для удаленных подключений
+hostssl all             all             0.0.0.0/0               scram-sha-256
+
+# ========= БЕЗ ПАРОЛЯ (осторожно!) =========
+
+# Доверять локальным подключениям (только для разработки!)
+local   all             all                                     trust
+host    all             all             127.0.0.1/32            trust
+
+# ========= ОТКЛОНИТЬ ПОДКЛЮЧЕНИЯ =========
+
+# Запретить подключения для определенного пользователя
+host    all             baduser         0.0.0.0/0               reject
+```
+
+#### Методы аутентификации
+
+| Метод | Описание | Использование |
+|-------|----------|---------------|
+| `trust` | Без пароля (небезопасно) | Только для разработки |
+| `reject` | Отклонить подключение | Блокировка пользователей |
+| `scram-sha-256` | Современный хэш-алгоритм | Рекомендуется (с PostgreSQL 10+) |
+| `md5` | Устаревший хэш | Для совместимости |
+| `password` | Пароль в открытом виде | Небезопасно, не используйте |
+| `peer` | Пользователь ОС = пользователь PostgreSQL | Unix sockets |
+| `ident` | Проверка через сервер ident | TCP/IP |
+| `cert` | SSL сертификат клиента | Повышенная безопасность |
+
+#### Применение изменений
+
+```bash
+# Перезагрузка конфигурации
+sudo systemctl reload postgresql
+
+# Или через SQL
+psql -U postgres -c "SELECT pg_reload_conf();"
+```
+
+#### Пример настройки для удаленного доступа
+
+```ini
+# postgresql.conf
+listen_addresses = '*'
+
+# pg_hba.conf
+host    all             all             192.168.1.0/24          scram-sha-256
+```
+
+```bash
+# Перезапуск сервера
+sudo systemctl restart postgresql
+
+# Тестирование подключения с удаленной машины
+psql -h 192.168.1.100 -U myuser -d mydb
+```
+
+---
+
+## Структура данных PostgreSQL
+
+### Иерархия объектов базы данных
+
+```
+PostgreSQL Cluster (Кластер)
+└── Database (База данных)
+    └── Schema (Схема)
+        ├── Table (Таблица)
+        ├── View (Представление)
+        ├── Index (Индекс)
+        ├── Sequence (Последовательность)
+        ├── Function (Функция)
+        └── Type (Тип данных)
+```
+
+#### Кластер баз данных
+
+**Кластер** — это коллекция баз данных, управляемых одним экземпляром PostgreSQL сервера.
+
+```sql
+-- Просмотр всех баз данных в кластере
+\l
+-- или
+SELECT datname FROM pg_database;
+
+-- Текущая база данных
+SELECT current_database();
+
+-- Размер всех баз данных
+SELECT 
+    datname,
+    pg_size_pretty(pg_database_size(datname)) AS size
+FROM pg_database
+ORDER BY pg_database_size(datname) DESC;
+```
+
+#### База данных (Database)
+
+```sql
+-- Создание базы данных
+CREATE DATABASE mydb
+    WITH 
+    OWNER = myuser
+    ENCODING = 'UTF8'
+    LC_COLLATE = 'ru_RU.UTF-8'
+    LC_CTYPE = 'ru_RU.UTF-8'
+    TEMPLATE = template0
+    CONNECTION LIMIT = 100;
+
+-- Создание с комментарием
+CREATE DATABASE testdb;
+COMMENT ON DATABASE testdb IS 'База данных для тестирования';
+
+-- Переименование
+ALTER DATABASE oldname RENAME TO newname;
+
+-- Удаление (должны отсутствовать подключения)
+DROP DATABASE mydb;
+
+-- Принудительное удаление (отключит всех пользователей)
+DROP DATABASE mydb WITH (FORCE);
+```
+
+#### Схема (Schema)
+
+**Схема** — это пространство имен внутри базы данных.
+
+```sql
+-- Создание схемы
+CREATE SCHEMA sales;
+CREATE SCHEMA hr AUTHORIZATION hr_manager;
+
+-- Просмотр схем
+\dn
+-- или
+SELECT schema_name FROM information_schema.schemata;
+
+-- Создание таблицы в схеме
+CREATE TABLE sales.orders (
+    order_id SERIAL PRIMARY KEY,
+    customer_id INT,
+    amount NUMERIC(10, 2)
+);
+
+-- Установка пути поиска схем
+SET search_path TO sales, public;
+SHOW search_path;
+
+-- Установка схемы по умолчанию для пользователя
+ALTER ROLE myuser SET search_path TO sales, public;
+
+-- Удаление схемы
+DROP SCHEMA sales;                    -- Только если пустая
+DROP SCHEMA sales CASCADE;             -- Удалит все объекты внутри
+```
+
+:::tip Использование схем
+Схемы полезны для:
+- Организации объектов по назначению (sales, hr, analytics)
+- Разделения окружений (dev, test, prod)
+- Мультитенантности (tenant1, tenant2, tenant3)
+- Изоляции прав доступа
+:::
+
+### Структура хранения на диске
+
+#### Директория PGDATA
+
+```bash
+# Найти PGDATA
+sudo -u postgres psql -c "SHOW data_directory;"
+
+# Типичные пути:
+# Linux: /var/lib/postgresql/18/main
+# macOS (Homebrew): /opt/homebrew/var/postgresql@18
+# Windows: C:\Program Files\PostgreSQL\18\data
+```
+
+```
+PGDATA/
+├── PG_VERSION              # Версия PostgreSQL
+├── postgresql.conf         # Главный конфигурационный файл
+├── postgresql.auto.conf    # Автоматически измененные параметры
+├── pg_hba.conf            # Контроль аутентификации
+├── pg_ident.conf          # Маппинг пользователей
+├── postmaster.pid         # PID главного процесса
+├── postmaster.opts        # Опции запуска
+│
+├── base/                  # Файлы баз данных
+│   ├── 1/                # template1 (OID=1)
+│   ├── 5/                # template0 (OID=5)
+│   ├── 13000/            # Пользовательская БД
+│   │   ├── 16384         # Файл таблицы/индекса
+│   │   ├── 16384.1       # Продолжение (если >1GB)
+│   │   ├── 16384_fsm     # Free Space Map
+│   │   ├── 16384_vm      # Visibility Map
+│   │   └── ...
+│   └── ...
+│
+├── global/               # Общие системные таблицы
+│   ├── pg_control        # Критическая информация о кластере
+│   ├── pg_filenode.map
+│   └── ...
+│
+├── pg_wal/              # Write-Ahead Log (журнал транзакций)
+│   ├── 000000010000000000000001
+│   ├── 000000010000000000000002
+│   ├── 000000010000000000000003
+│   └── archive_status/  # Статус архивации WAL
+│
+├── pg_xact/             # Статусы транзакций (commit/abort)
+├── pg_subtrans/         # Статусы подтранзакций
+├── pg_multixact/        # Мультитранзакционные данные
+├── pg_commit_ts/        # Временные метки коммитов
+├── pg_snapshots/        # Экспортированные снимки транзакций
+├── pg_twophase/         # Двухфазные транзакции
+│
+├── pg_logical/          # Логическая репликация
+│   ├── mappings/
+│   ├── snapshots/
+│   └── replorigin_checkpoint
+│
+├── pg_stat/             # Статистика
+├── pg_stat_tmp/         # Временная статистика
+├── pg_tblspc/           # Символьные ссылки на tablespaces
+├── pg_replslot/         # Слоты репликации
+│
+└── log/                 # Логи сервера (если настроено)
+    ├── postgresql-2024-01-08_100000.log
+    └── ...
+```
+
+#### OID (Object Identifier)
+
+Каждый объект в PostgreSQL имеет уникальный OID.
+
+```sql
+-- OID текущей базы данных
+SELECT oid, datname FROM pg_database WHERE datname = current_database();
+
+-- OID таблицы
+SELECT oid, relname FROM pg_class WHERE relname = 'users';
+
+-- Физическое расположение таблицы
+SELECT pg_relation_filepath('users');
+-- Результат: base/13000/16384
+
+-- Это означает:
+-- /var/lib/postgresql/18/main/base/13000/16384
+```
+
+### Файлы таблиц и индексов
+
+#### Структура файла таблицы
+
+PostgreSQL хранит данные в **страницах (pages)** размером **8KB** по умолчанию.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Файл таблицы                          │
+│                   (1GB максимум)                         │
+├─────────────────────────────────────────────────────────┤
+│  Page 0 (8KB)                                           │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │ Page Header (24 bytes)                            │  │
+│  ├───────────────────────────────────────────────────┤  │
+│  │ Item Pointers (Line Pointers)                     │  │
+│  ├───────────────────────────────────────────────────┤  │
+│  │ Free Space                                        │  │
+│  ├───────────────────────────────────────────────────┤  │
+│  │ Tuples (строки данных)                            │  │
+│  ├───────────────────────────────────────────────────┤  │
+│  │ Special Space (для индексов)                      │  │
+│  └───────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────┤
+│  Page 1 (8KB)                                           │
+├─────────────────────────────────────────────────────────┤
+│  Page 2 (8KB)                                           │
+├─────────────────────────────────────────────────────────┤
+│  ...                                                     │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### Просмотр структуры страниц
+
+```sql
+-- Установка расширения для анализа страниц
+CREATE EXTENSION pageinspect;
+
+-- Анализ заголовка страницы
+SELECT * FROM page_header(get_raw_page('users', 0));
+
+-- Результат:
+--  lsn          | checksum | flags | lower | upper | special | pagesize | version | prune_xid 
+-- --------------+----------+-------+-------+-------+---------+----------+---------+-----------
+--  0/1A2B3C4D   |        0 |     0 |    28 |  8064 |    8192 |     8192 |       4 |         0
+
+-- Просмотр элементов страницы (item pointers)
+SELECT * FROM heap_page_items(get_raw_page('users', 0));
+
+-- Результат:
+--  lp | lp_off | lp_flags | lp_len | t_xmin | t_xmax | t_field3 | t_ctid | t_infomask2 | t_infomask | t_hoff | t_bits | t_oid 
+-- ----+--------+----------+--------+--------+--------+----------+--------+-------------+------------+--------+--------+-------
+--   1 |   8064 |        1 |     32 |    500 |      0 |        0 | (0,1)  |           3 |       2050 |     24 |        |      
+--   2 |   8032 |        1 |     32 |    501 |      0 |        0 | (0,2)  |           3 |       2050 |     24 |        |      
+```
+
+#### Сегменты файлов (>1GB)
+
+Когда таблица превышает 1GB, PostgreSQL создает дополнительные сегменты:
+
+```bash
+# Пример больших файлов таблицы
+ls -lh /var/lib/postgresql/18/main/base/13000/
+
+# -rw------- 1 postgres postgres 1.0G Jan  8 10:00 16384      # Первый сегмент
+# -rw------- 1 postgres postgres 1.0G Jan  8 10:05 16384.1    # Второй сегмент
+# -rw------- 1 postgres postgres 512M Jan  8 10:08 16384.2    # Третий сегмент
+# -rw------- 1 postgres postgres  24K Jan  8 10:00 16384_fsm  # Free Space Map
+# -rw------- 1 postgres postgres 8.0K Jan  8 10:00 16384_vm   # Visibility Map
+```
+
+```sql
+-- Размер таблицы и индексов
+SELECT 
+    pg_size_pretty(pg_total_relation_size('users')) AS total_size,
+    pg_size_pretty(pg_relation_size('users')) AS table_size,
+    pg_size_pretty(pg_indexes_size('users')) AS indexes_size,
+    pg_size_pretty(pg_total_relation_size('users') - pg_relation_size('users')) AS external_size;
+
+-- Количество страниц в таблице
+SELECT relpages FROM pg_class WHERE relname = 'users';
+
+-- Статистика таблицы
+SELECT * FROM pg_stat_user_tables WHERE relname = 'users';
+```
+
+### TOAST (The Oversized-Attribute Storage Technique)
+
+TOAST — механизм для хранения больших значений, которые не помещаются в одну страницу.
+
+```sql
+-- Создание таблицы с большими данными
+CREATE TABLE documents (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(100),
+    content TEXT  -- Может быть очень большим
+);
+
+-- Вставка большого текста
+INSERT INTO documents (title, content)
+VALUES ('Большой документ', repeat('Текст ', 100000));
+
+-- PostgreSQL автоматически сохранит большой content в TOAST таблице
+
+-- Просмотр TOAST таблицы
+SELECT 
+    relname,
+    reltoastrelid,
+    pg_size_pretty(pg_total_relation_size(oid)) AS total_size,
+    pg_size_pretty(pg_relation_size(reltoastrelid)) AS toast_size
+FROM pg_class
+WHERE relname = 'documents';
+
+-- TOAST стратегии для колонок
+\d+ documents
+
+-- Изменение TOAST стратегии
+ALTER TABLE documents ALTER COLUMN content SET STORAGE EXTERNAL;
+
+-- Стратегии:
+-- PLAIN    - без компрессии, без TOAST (только для фиксированных типов)
+-- EXTENDED - компрессия + TOAST (по умолчанию для переменных типов)
+-- EXTERNAL - TOAST без компрессии
+-- MAIN     - компрессия, TOAST только в крайнем случае
+```
+
+### Free Space Map (FSM) и Visibility Map (VM)
+
+#### Free Space Map
+
+FSM отслеживает свободное место на страницах для эффективной вставки.
+
+```sql
+-- Установка расширения
+CREATE EXTENSION pg_freespacemap;
+
+-- Просмотр свободного места
+SELECT * FROM pg_freespace('users');
+
+-- Результат:
+--  blkno | avail 
+-- -------+-------
+--      0 |     0     -- Страница 0: нет свободного места
+--      1 |   640     -- Страница 1: 640 байт свободно
+--      2 |  4096     -- Страница 2: половина страницы свободна
+```
+
+#### Visibility Map
+
+VM отслеживает, какие страницы содержат только видимые строки (для оптимизации VACUUM).
+
+```sql
+-- Установка расширения
+CREATE EXTENSION pg_visibility;
+
+-- Информация о видимости
+SELECT * FROM pg_visibility('users');
+
+-- Результат:
+--  blkno | all_visible | all_frozen 
+-- -------+-------------+------------
+--      0 | t           | f          -- Все строки видимы
+--      1 | f           | f          -- Есть мертвые строки
+--      2 | t           | t          -- Все строки заморожены
+```
+
+### Системные каталоги
+
+PostgreSQL хранит метаданные в системных таблицах (каталогах).
+
+```sql
+-- Основные системные каталоги
+SELECT * FROM pg_tables WHERE schemaname = 'pg_catalog' LIMIT 10;
+
+-- pg_database - информация о базах данных
+SELECT oid, datname, encoding, datcollate FROM pg_database;
+
+-- pg_class - таблицы, индексы, последовательности, представления
+SELECT oid, relname, relkind, relpages, reltuples 
+FROM pg_class 
+WHERE relkind = 'r'  -- 'r' = обычная таблица
+LIMIT 10;
+
+-- relkind значения:
+-- 'r' = ordinary table (обычная таблица)
+-- 'i' = index (индекс)
+-- 'S' = sequence (последовательность)
+-- 'v' = view (представление)
+-- 'm' = materialized view
+-- 'c' = composite type
+-- 'f' = foreign table
+-- 'p' = partitioned table
+
+-- pg_attribute - колонки таблиц
+SELECT 
+    attname AS column_name,
+    atttypid::regtype AS data_type,
+    attnotnull AS not_null
+FROM pg_attribute
+WHERE attrelid = 'users'::regclass
+  AND attnum > 0  -- Исключить системные колонки
+ORDER BY attnum;
+
+-- pg_index - индексы
+SELECT 
+    indexrelid::regclass AS index_name,
+    indrelid::regclass AS table_name,
+    indisunique AS is_unique,
+    indisprimary AS is_primary
+FROM pg_index
+WHERE indrelid = 'users'::regclass;
+
+-- pg_constraint - ограничения
+SELECT 
+    conname AS constraint_name,
+    contype AS constraint_type,
+    conrelid::regclass AS table_name
+FROM pg_constraint
+WHERE conrelid = 'users'::regclass;
+
+-- contype значения:
+-- 'c' = check constraint
+-- 'f' = foreign key
+-- 'p' = primary key
+-- 'u' = unique
+-- 't' = constraint trigger
+-- 'x' = exclusion constraint
+
+-- pg_proc - функции и процедуры
+SELECT proname, pronargs FROM pg_proc WHERE proname LIKE 'array%' LIMIT 5;
+
+-- pg_type - типы данных
+SELECT typname FROM pg_type WHERE typname LIKE 'int%';
+
+-- pg_roles - роли и пользователи
+SELECT rolname, rolsuper, rolcreatedb, rolcanlogin FROM pg_roles;
+
+-- pg_stat_activity - активные соединения
+SELECT 
+    pid,
+    usename,
+    application_name,
+    client_addr,
+    state,
+    query
+FROM pg_stat_activity
+WHERE state = 'active';
+```
+
+### Information Schema
+
+**Information Schema** — стандартизированное представление метаданных (часть стандарта SQL).
+
+```sql
+-- Список всех таблиц
+SELECT table_schema, table_name, table_type
+FROM information_schema.tables
+WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+ORDER BY table_schema, table_name;
+
+-- Колонки таблицы
+SELECT 
+    column_name,
+    data_type,
+    character_maximum_length,
+    is_nullable,
+    column_default
+FROM information_schema.columns
+WHERE table_name = 'users'
+ORDER BY ordinal_position;
+
+-- Ограничения (constraints)
+SELECT 
+    constraint_name,
+    constraint_type,
+    table_name
+FROM information_schema.table_constraints
+WHERE table_schema = 'public'
+ORDER BY table_name;
+
+-- Внешние ключи
+SELECT 
+    tc.constraint_name,
+    tc.table_name,
+    kcu.column_name,
+    ccu.table_name AS foreign_table_name,
+    ccu.column_name AS foreign_column_name
+FROM information_schema.table_constraints AS tc
+JOIN information_schema.key_column_usage AS kcu
+    ON tc.constraint_name = kcu.constraint_name
+JOIN information_schema.constraint_column_usage AS ccu
+    ON ccu.constraint_name = tc.constraint_name
+WHERE tc.constraint_type = 'FOREIGN KEY';
+
+-- Представления
+SELECT table_schema, table_name, view_definition
+FROM information_schema.views
+WHERE table_schema NOT IN ('pg_catalog', 'information_schema');
+
+-- Привилегии на таблицы
+SELECT 
+    grantee,
+    table_schema,
+    table_name,
+    privilege_type
+FROM information_schema.table_privileges
+WHERE table_schema = 'public'
+ORDER BY table_name, grantee;
+```
+
+---
+
+## Инструменты для работы с PostgreSQL
+
+### psql (командная строка)
+
+**psql** — официальный клиент командной строки PostgreSQL.
+
+#### Основные возможности
+
+```bash
+# Подключение с параметрами
+psql -h localhost -p 5432 -U myuser -d mydb
+
+# С переменными окружения
+export PGHOST=localhost
+export PGPORT=5432
+export PGUSER=myuser
+export PGDATABASE=mydb
+psql  # Подключится с указанными параметрами
+
+# Выполнение SQL команды
+psql -U postgres -c "SELECT version();"
+
+# Выполнение SQL из файла
+psql -U postgres -f script.sql
+
+# Выполнение и вывод в файл
+psql -U postgres -f query.sql -o output.txt
+
+# Тихий режим (без вывода служебной информации)
+psql -U postgres -q -t -c "SELECT count(*) FROM users;"
+```
+
+#### Полезные команды psql
+
+```sql
+-- ============= НАВИГАЦИЯ =============
+\l[+]              -- Список баз данных (+ для деталей)
+\c dbname          -- Подключиться к БД
+\dn[+]             -- Список схем
+\dt[+]             -- Список таблиц
+\dt schema.*       -- Таблицы в конкретной схеме
+\d table           -- Структура таблицы
+\d+ table          -- Детальная структура
+\di[+]             -- Список индексов
+\ds[+]             -- Список последовательностей
+\dv[+]             -- Список представлений
+\dm[+]             -- Список материализованных представлений
+\df[+]             -- Список функций
+\du[+]             -- Список ролей
+\dp table          -- Права доступа к таблице
+
+-- ============= ВЫПОЛНЕНИЕ =============
+\i file.sql        -- Выполнить SQL из файла
+\o file.txt        -- Перенаправить вывод в файл
+\o                 -- Вернуть вывод в консоль
+\! command         -- Выполнить команду shell
+\cd directory      -- Сменить директорию
+
+-- ============= ФОРМАТИРОВАНИЕ =============
+\x [on|off|auto]   -- Расширенный режим (вертикальный вывод)
+\a                 -- Переключить выравнивание
+\t                 -- Показывать только данные (без заголовков)
+\H                 -- HTML вывод
+\pset format       -- Формат вывода (aligned, unaligned, html, latex)
+
+-- ============= СПРАВКА =============
+\?                 -- Помощь по командам psql
+\h                 -- Помощь по SQL командам
+\h CREATE TABLE    -- Помощь по конкретной команде
+
+-- ============= ИНФОРМАЦИЯ =============
+\conninfo          -- Информация о текущем подключении
+\timing [on|off]   -- Включить/выключить время выполнения
+\watch [SEC]       -- Повторять запрос каждые SEC секунд
+
+-- ============= ПЕРЕМЕННЫЕ =============
+\set               -- Показать все переменные
+\set var value     -- Установить переменную
+\echo :var         -- Вывести значение переменной
+
+-- ============= РЕДАКТИРОВАНИЕ =============
+\e                 -- Открыть последний запрос в редакторе
+\ef function       -- Редактировать функцию
+\ev view           -- Редактировать представление
+
+-- ============= ВЫХОД =============
+\q                 -- Выход
+```
+
+#### Пример работы с psql
+
+```sql
+-- Подключение
+$ psql -U postgres
+
+-- Создание базы данных
+postgres=# CREATE DATABASE bookstore;
+CREATE DATABASE
+
+-- Подключение к БД
+postgres=# \c bookstore
+You are now connected to database "bookstore" as user "postgres".
+
+-- Включить отображение времени
+bookstore=# \timing
+Timing is on.
+
+-- Создать таблицу
+bookstore=# CREATE TABLE books (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    author VARCHAR(100),
+    price NUMERIC(10, 2),
+    published_date DATE
+);
+CREATE TABLE
+Time: 15.234 ms
+
+-- Вставить данные
+bookstore=# INSERT INTO books (title, author, price, published_date)
+VALUES 
+    ('PostgreSQL: Up and Running', 'Regina Obe', 45.99, '2017-01-10'),
+    ('Learning PostgreSQL', 'Salahaldin Juba', 39.99, '2015-11-20');
+INSERT 0 2
+Time: 2.456 ms
+
+-- Включить расширенный режим
+bookstore=# \x
+Expanded display is on.
+
+-- Выборка
+bookstore=# SELECT * FROM books WHERE price > 40;
+-[ RECORD 1 ]---+------------------------------
+id              | 1
+title           | PostgreSQL: Up and Running
+author          | Regina Obe
+price           | 45.99
+published_date  | 2017-01-10
+
+Time: 1.123 ms
+
+-- Выключить расширенный режим
+bookstore=# \x
+Expanded display is off.
+
+-- Сохранить результат в файл
+bookstore=# \o books_export.txt
+bookstore=# SELECT * FROM books;
+bookstore=# \o
+
+-- Выполнить команду из файла
+bookstore=# \i insert_data.sql
+
+-- Просмотреть структуру
+bookstore=# \d+ books
+```
+
+### pgAdmin (GUI инструмент)
+
+**pgAdmin** — самый популярный графический инструмент для работы с PostgreSQL.
+
+#### Установка pgAdmin
+
+```bash
+# Linux (Ubuntu/Debian)
+sudo apt install pgadmin4
+
+# или веб-версия
+sudo apt install pgadmin4-web
+sudo /usr/pgadmin4/bin/setup-web.sh
+
+# macOS (Homebrew Cask)
+brew install --cask pgadmin4
+
+# Windows
+# Скачать с https://www.pgadmin.org/download/
+```
+
+#### Docker версия
+
+```bash
+docker run -p 5050:80 \
+    -e 'PGADMIN_DEFAULT_EMAIL=admin@admin.com' \
+    -e 'PGADMIN_DEFAULT_PASSWORD=admin' \
+    -d dpage/pgadmin4
+```
+
+#### Основные возможности pgAdmin
+
+- **Query Tool** — редактор SQL запросов с подсветкой синтаксиса
+- **Visual Explain** — графическая визуализация планов запросов
+- **Schema Designer** — визуальное проектирование схемы БД
+- **Data Import/Export** — импорт и экспорт данных (CSV, Excel)
+- **Backup/Restore** — резервное копирование и восстановление
+- **Server Monitoring** — мониторинг активности сервера
+- **Grant Wizard** — управление правами доступа
+
+### DBeaver (универсальный GUI)
+
+**DBeaver** — универсальный клиент для работы с различными СУБД.
+
+```bash
+# Скачать с https://dbeaver.io/download/
+
+# Ubuntu/Debian
+wget https://dbeaver.io/files/dbeaver-ce_latest_amd64.deb
+sudo dpkg -i dbeaver-ce_latest_amd64.deb
+
+# macOS (Homebrew)
+brew install --cask dbeaver-community
+
+# Windows
+# Скачать installer с официального сайта
+```
+
+### DataGrip (JetBrains)
+
+Платный, но мощный IDE для работы с базами данных.
+
+```bash
+# Скачать с https://www.jetbrains.com/datagrip/
+
+# Поддерживает:
+# - Интеллектуальное автодополнение
+# - Рефакторинг кода
+# - Интеграция с системами контроля версий
+# - Анализ производительности
+```
+
+### 5.5 Программные библиотеки
+
+#### Python (psycopg2)
+
+```python
+# Установка
+pip install psycopg2-binary
+
+# Использование
+import psycopg2
+
+# Подключение
+conn = psycopg2.connect(
+    host="localhost",
+    database="mydb",
+    user="myuser",
+    password="mypassword"
+)
+
+# Создание курсора
+cur = conn.cursor()
+
+# Выполнение запроса
+cur.execute("SELECT * FROM users WHERE id = %s", (1,))
+row = cur.fetchone()
+print(row)
+
+# Вставка данных
+cur.execute(
+    "INSERT INTO users (username, email) VALUES (%s, %s)",
+    ('john_doe', 'john@example.com')
+)
+conn.commit()
+
+# Закрытие
+cur.close()
+conn.close()
+```
+
+#### Node.js (pg)
+
+```javascript
+// Установка
+// npm install pg
+
+const { Pool } = require('pg');
+
+// Создание пула подключений
+const pool = new Pool({
+  host: 'localhost',
+  database: 'mydb',
+  user: 'myuser',
+  password: 'mypassword',
+  port: 5432,
+});
+
+// Выполнение запроса
+pool.query('SELECT * FROM users WHERE id = $1', [1], (err, res) => {
+  if (err) {
+    console.error(err);
+    return;
+  }
+  console.log(res.rows[0]);
+});
+
+// Async/await
+async function getUser(id) {
+  const res = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+  return res.rows[0];
+}
+
+// Транзакция
+async function transferMoney(fromId, toId, amount) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE accounts SET balance = balance - $1 WHERE id = $2', [amount, fromId]);
+    await client.query('UPDATE accounts SET balance = balance + $1 WHERE id = $2', [amount, toId]);
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+```
+
+#### Java (JDBC)
+
+```java
+// Добавить зависимость Maven
+// <dependency>
+//     <groupId>org.postgresql</groupId>
+//     <artifactId>postgresql</artifactId>
+//     <version>42.7.0</version>
+// </dependency>
+
+import java.sql.*;
+
+public class PostgreSQLExample {
+    public static void main(String[] args) {
+        String url = "jdbc:postgresql://localhost:5432/mydb";
+        String user = "myuser";
+        String password = "mypassword";
+        
+        try (Connection conn = DriverManager.getConnection(url, user, password)) {
+            System.out.println("Connected to PostgreSQL!");
+            
+            // Выполнение запроса
+            String sql = "SELECT * FROM users WHERE id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, 1);
+            
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                System.out.println("ID: " + rs.getInt("id"));
+                System.out.println("Username: " + rs.getString("username"));
+            }
+            
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+## Решение типичных проблем
+
+### Проблема: Не могу подключиться к PostgreSQL
+
+**Симптомы:**
+```bash
+psql: error: connection to server at "localhost" (127.0.0.1), port 5432 failed: 
+FATAL: Peer authentication failed for user "postgres"
+```
+
+**Решение:**
+
+```bash
+# 1. Проверьте, запущен ли сервер
+sudo systemctl status postgresql
+
+# 2. Проверьте pg_hba.conf
+sudo nano /etc/postgresql/18/main/pg_hba.conf
+
+# Измените метод аутентификации
+# local   all             postgres                                peer
+# на
+local   all             postgres                                md5
+
+# 3. Перезагрузите конфигурацию
+sudo systemctl reload postgresql
+
+# 4. Попробуйте подключиться снова
+psql -U postgres -h localhost
+```
+
+### Проблема: Ошибка "database does not exist"
+
+```bash
+# Проверьте список баз данных
+psql -U postgres -l
+
+# Создайте базу данных, если её нет
+psql -U postgres -c "CREATE DATABASE mydb;"
+```
+
+### Проблема: Недостаточно прав (permission denied)
+
+```sql
+-- Подключитесь как суперпользователь
+sudo -u postgres psql
+
+-- Предоставьте необходимые права
+GRANT ALL PRIVILEGES ON DATABASE mydb TO myuser;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO myuser;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO myuser;
+
+-- Для будущих объектов
+ALTER DEFAULT PRIVILEGES IN SCHEMA public 
+GRANT ALL ON TABLES TO myuser;
+```
+
+### Проблема: Порт уже используется
+
+```bash
+# Найдите процесс, использующий порт 5432
+sudo lsof -i :5432
+# или
+sudo netstat -tlnp | grep 5432
+
+# Если это другой экземпляр PostgreSQL, остановите его
+sudo systemctl stop postgresql
+
+# Или измените порт в postgresql.conf
+sudo nano /etc/postgresql/18/main/postgresql.conf
+# port = 5433
+
+sudo systemctl restart postgresql
+```
+
+### Проблема: PostgreSQL использует слишком много памяти
+
+```sql
+-- Проверьте текущие настройки
+SHOW shared_buffers;
+SHOW work_mem;
+
+-- Оптимизируйте настройки в postgresql.conf
+# Для сервера с 4GB RAM:
+shared_buffers = 1GB
+work_mem = 16MB
+maintenance_work_mem = 256MB
+effective_cache_size = 3GB
+```
+
+### Проблема: Медленные запросы
+
+```sql
+-- 1. Установите расширение для анализа
+CREATE EXTENSION pg_stat_statements;
+
+-- 2. Найдите самые медленные запросы
+SELECT 
+    query,
+    calls,
+    mean_exec_time,
+    max_exec_time
+FROM pg_stat_statements
+ORDER BY mean_exec_time DESC
+LIMIT 10;
+
+-- 3. Анализируйте конкретный запрос
+EXPLAIN ANALYZE SELECT * FROM large_table WHERE some_column = 'value';
+
+-- 4. Создайте необходимые индексы
+CREATE INDEX idx_some_column ON large_table(some_column);
+
+-- 5. Обновите статистику
+ANALYZE large_table;
+```
+
+### Проблема: Таблица раздулась (bloat)
+
+```sql
+-- Установите расширение для анализа
+CREATE EXTENSION pgstattuple;
+
+-- Проверьте раздувание таблицы
+SELECT 
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS total_size,
+    round(100 * pg_relation_size(schemaname||'.'||tablename) / 
+          pg_total_relation_size(schemaname||'.'||tablename), 2) AS table_pct
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+
+-- Проверьте мертвые строки
+SELECT 
+    schemaname,
+    relname,
+    n_live_tup,
+    n_dead_tup,
+    round(100 * n_dead_tup / NULLIF(n_live_tup + n_dead_tup, 0), 2) AS dead_pct
+FROM pg_stat_user_tables
+WHERE n_dead_tup > 0
+ORDER BY n_dead_tup DESC;
+
+-- Решение: выполните VACUUM
+VACUUM ANALYZE table_name;
+
+-- Для критичных случаев (блокирует таблицу!)
+VACUUM FULL table_name;
+
+-- Настройте autovacuum
+ALTER TABLE table_name SET (
+    autovacuum_vacuum_scale_factor = 0.05,
+    autovacuum_analyze_scale_factor = 0.02
+);
+```
+
+---
+
+## Мониторинг и обслуживание
+
+### Ежедневные проверки
+
+```sql
+-- Скрипт для ежедневного мониторинга
+-- Сохраните как daily_check.sql
+
+-- 1. Проверка размера баз данных
+SELECT 
+    datname,
+    pg_size_pretty(pg_database_size(datname)) AS size
+FROM pg_database
+ORDER BY pg_database_size(datname) DESC;
+
+-- 2. Проверка активных соединений
+SELECT 
+    datname,
+    count(*) AS connections
+FROM pg_stat_activity
+GROUP BY datname
+ORDER BY connections DESC;
+
+-- 3. Проверка длительных запросов
+SELECT 
+    pid,
+    now() - query_start AS duration,
+    usename,
+    query
+FROM pg_stat_activity
+WHERE state = 'active'
+  AND query NOT LIKE '%pg_stat_activity%'
+  AND now() - query_start > interval '5 minutes'
+ORDER BY duration DESC;
+
+-- 4. Проверка блокировок
+SELECT 
+    blocked_locks.pid AS blocked_pid,
+    blocked_activity.usename AS blocked_user,
+    blocking_locks.pid AS blocking_pid,
+    blocking_activity.usename AS blocking_user,
+    blocked_activity.query AS blocked_statement,
+    blocking_activity.query AS blocking_statement
+FROM pg_catalog.pg_locks blocked_locks
+JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked_activity.pid = blocked_locks.pid
+JOIN pg_catalog.pg_locks blocking_locks 
+    ON blocking_locks.locktype = blocked_locks.locktype
+    AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+    AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+    AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+    AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+    AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+    AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+    AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+    AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+    AND blocking_locks.pid != blocked_locks.pid
+JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
+WHERE NOT blocked_locks.granted;
+
+-- 5. Проверка неиспользуемых индексов
+SELECT 
+    schemaname,
+    tablename,
+    indexname,
+    idx_scan,
+    pg_size_pretty(pg_relation_size(indexrelid)) AS size
+FROM pg_stat_user_indexes
+WHERE idx_scan = 0
+  AND indexrelid IS NOT NULL
+ORDER BY pg_relation_size(indexrelid) DESC;
+
+-- 6. Таблицы, нуждающиеся в VACUUM
+SELECT 
+    schemaname,
+    relname,
+    n_dead_tup,
+    n_live_tup,
+    round(100 * n_dead_tup / NULLIF(n_live_tup + n_dead_tup, 0), 2) AS dead_pct,
+    last_vacuum,
+    last_autovacuum
+FROM pg_stat_user_tables
+WHERE n_dead_tup > 1000
+ORDER BY n_dead_tup DESC
+LIMIT 20;
+```
+
+### Еженедельные задачи
+
+```bash
+#!/bin/bash
+# weekly_maintenance.sh
+
+# 1. Резервное копирование всех баз данных
+pg_dumpall -U postgres | gzip > /backup/postgres_$(date +%Y%m%d).sql.gz
+
+# 2. VACUUM ANALYZE для всех баз
+psql -U postgres -c "VACUUM ANALYZE;"
+
+# 3. Reindex для устранения раздувания индексов
+psql -U postgres -d mydb -c "REINDEX DATABASE mydb;"
+
+# 4. Очистка старых логов (старше 30 дней)
+find /var/log/postgresql -name "*.log" -mtime +30 -delete
+
+# 5. Проверка целостности
+vacuumdb -U postgres --all --analyze --verbose
+```
+
+### Настройка логирования
+
+```ini
+# postgresql.conf
+
+# Базовые настройки логов
+logging_collector = on
+log_directory = 'log'
+log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+log_rotation_age = 1d
+log_rotation_size = 100MB
+
+# Что логировать
+log_min_duration_statement = 1000    # Запросы дольше 1 секунды
+log_checkpoints = on
+log_connections = on
+log_disconnections = on
+log_lock_waits = on                  # Ожидания блокировок
+log_temp_files = 0                   # Временные файлы
+
+# Формат логов
+log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+log_timezone = 'Europe/Moscow'
+
+# Детальное логирование (для отладки)
+# log_statement = 'all'              # Логировать все запросы (осторожно!)
+# log_min_error_statement = error    # Минимальный уровень для вывода запроса
+```
+
+---
+
+## Лучшие практики
+
+### Безопасность
+
+```sql
+-- 1. Используйте сильные пароли
+ALTER ROLE myuser WITH PASSWORD 'V3ry$tr0ng_P@ssw0rd!';
+
+-- 2. Ограничьте права доступа (принцип минимальных привилегий)
+-- Создайте роль только для чтения
+CREATE ROLE readonly;
+GRANT CONNECT ON DATABASE mydb TO readonly;
+GRANT USAGE ON SCHEMA public TO readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly;
+
+-- Создайте роль для приложения с ограниченными правами
+CREATE ROLE app_user WITH LOGIN PASSWORD 'app_pass';
+GRANT CONNECT ON DATABASE mydb TO app_user;
+GRANT USAGE ON SCHEMA public TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON specific_tables TO app_user;
+
+-- 3. Используйте SSL для удаленных подключений
+-- В postgresql.conf:
+-- ssl = on
+-- ssl_cert_file = 'server.crt'
+-- ssl_key_file = 'server.key'
+
+-- 4. Включите Row Level Security где необходимо
+ALTER TABLE sensitive_data ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY user_isolation ON sensitive_data
+    FOR ALL
+    TO app_user
+    USING (user_id = current_setting('app.current_user_id')::int);
+
+-- 5. Регулярно обновляйте PostgreSQL
+-- Подписывайтесь на security mailing list
+```
+
+### Производительность
+
+```sql
+-- 1. Используйте подготовленные выражения (prepared statements)
+PREPARE get_user (int) AS
+    SELECT * FROM users WHERE id = $1;
+
+EXECUTE get_user(1);
+
+-- 2. Используйте COPY для массовой загрузки данных
+COPY products FROM '/path/to/products.csv' WITH (FORMAT csv, HEADER true);
+
+-- 3. Батчинг для множественных вставок
+INSERT INTO logs (message, created_at)
+VALUES 
+    ('Log 1', NOW()),
+    ('Log 2', NOW()),
+    ('Log 3', NOW());
+
+-- 4. Используйте EXPLAIN ANALYZE
+EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
+SELECT * FROM orders WHERE customer_id = 123;
+
+-- 5. Партиционируйте большие таблицы
+CREATE TABLE measurements (
+    id SERIAL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    value NUMERIC
+) PARTITION BY RANGE (timestamp);
+
+CREATE TABLE measurements_2024_01 PARTITION OF measurements
+    FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');
+```
+
+### Резервное копирование
+
+```bash
+#!/bin/bash
+# backup_strategy.sh
+
+# 1. Полное резервное копирование (ежедневно)
+pg_dump -U postgres -Fc mydb > /backup/mydb_$(date +%Y%m%d).dump
+
+# 2. Инкрементальное с использованием WAL архивации
+# В postgresql.conf:
+# archive_mode = on
+# archive_command = 'cp %p /archive/%f'
+
+# 3. Логическое резервное копирование конкретных таблиц
+pg_dump -U postgres -t users -t orders mydb > /backup/critical_tables.sql
+
+# 4. Резервное копирование всего кластера
+pg_dumpall -U postgres > /backup/cluster_$(date +%Y%m%d).sql
+
+# 5. Автоматическое удаление старых бэкапов (старше 7 дней)
+find /backup -name "*.dump" -mtime +7 -delete
+
+# 6. Проверка целостности бэкапа
+pg_restore --list /backup/mydb_20240108.dump > /dev/null
+if [ $? -eq 0 ]; then
+    echo "Backup OK"
+else
+    echo "Backup corrupted!" | mail -s "Backup Error" admin@example.com
+fi
+```
+
+### Полезные ресурсы:
+
+**Официальная документация:**
+- https://www.postgresql.org/docs/
+- https://wiki.postgresql.org/
+
+**Обучающие материалы:**
+- PostgreSQL Tutorial: https://www.postgresqltutorial.com/
+- PostgreSQL Exercises: https://pgexercises.com/
+
+**Инструменты:**
+- pgAdmin: https://www.pgadmin.org/
+- DBeaver: https://dbeaver.io/
+- pgcli (улучшенный psql): https://www.pgcli.com/
+
+**Сообщество:**
+- PostgreSQL Slack: https://postgres-slack.herokuapp.com/
+- Stack Overflow: https://stackoverflow.com/questions/tagged/postgresql
+- Reddit: https://www.reddit.com/r/PostgreSQL/
+
+## Контрольные вопросы
+
+1. **В чем разница между кластером, базой данных и схемой в PostgreSQL?**
+
+2. **Какие три основных конфигурационных файла использует PostgreSQL и для чего каждый?**
+
+3. **Что такое OID и как его можно использовать?**
+
+4. **Объясните структуру страницы (page) в PostgreSQL.**
+
+5. **Что такое TOAST и когда он используется?**
+
+6. **В чем разница между VACUUM и VACUUM FULL?**
+
+7. **Какие методы аутентификации можно использовать в pg_hba.conf?**
+
+8. **Как найти физическое расположение таблицы на диске?**
+
+9. **Что такое WAL и для чего он нужен?**
+
+10. **Какие инструменты командной строки предоставляет PostgreSQL для резервного копирования?**
