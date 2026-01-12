@@ -149,7 +149,7 @@ const config: Config = {
         },
         {
           type: "dropdown",
-          label: "📦 Технологии",
+          label: "🚀 Технологии",
           position: "left",
           items: [
             {
@@ -157,6 +157,12 @@ const config: Config = {
               sidebarId: "postgresSidebar",
               label: "🐘 PostgreSQL",
               docsPluginId: "postgresql",
+            },
+            {
+              type: "docSidebar",
+              sidebarId: "kubernetesSidebar",
+              label: "📦 Контейнеры",
+              docsPluginId: "k8s",
             },
           ],
         },
