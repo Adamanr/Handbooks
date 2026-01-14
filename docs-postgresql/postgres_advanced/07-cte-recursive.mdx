@@ -1,0 +1,1587 @@
+---
+id: module-07-cte-recursive
+title: "CTE и рекурсивные запросы"
+sidebar_label: "CTE и Рекурсивные запросы"
+sidebar_position: 7
+description: "Полное руководство по работе с CTE и Рекурсивными запросами"
+keywords: [postgresql, cte, recursive]
+---
+
+import { CodeBlockGoPostgres } from "../../src/components/practicModules/practic";
+
+# CTE (Common Table Expressions) и рекурсивные запросы
+
+## Введение
+
+Common Table Expressions (CTE), также известные как WITH запросы, — это мощный инструмент PostgreSQL для написания читаемых, модульных и эффективных SQL запросов. CTE позволяют создавать временные именованные результирующие наборы, которые существуют только в рамках одного запроса. Рекурсивные CTE открывают возможности работы с иерархическими и древовидными структурами данных.
+
+## Основы CTE (Common Table Expressions)
+
+### Что такое CTE?
+
+**CTE (Common Table Expression)** — это временный результирующий набор, определенный в рамках одного запроса. Это как создание временного представления, которое существует только во время выполнения запроса.
+
+**Преимущества CTE:**
+- ✅ Улучшает **читаемость** сложных запросов
+- ✅ Позволяет **переиспользовать** подзапросы
+- ✅ Упрощает **модульность** запросов
+- ✅ Поддерживает **рекурсию** для иерархических данных
+- ✅ Может быть **оптимизирован** PostgreSQL
+
+### Базовый синтаксис
+
+```sql
+WITH cte_name AS (
+    SELECT ...
+)
+SELECT ... FROM cte_name;
+```
+
+**Множественные CTE:**
+
+```sql
+WITH 
+    cte1 AS (SELECT ...),
+    cte2 AS (SELECT ...),
+    cte3 AS (SELECT ... FROM cte1 JOIN cte2 ...)
+SELECT ... FROM cte3;
+```
+
+## Подготовка тестовой базы данных
+
+Создадим базу данных компании с иерархической структурой.
+
+```sql
+-- Создание базы данных
+CREATE DATABASE company_analytics;
+\c company_analytics
+
+-- Сотрудники (иерархическая структура)
+CREATE TABLE employees (
+    employee_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    department VARCHAR(50) NOT NULL,
+    position VARCHAR(100),
+    salary NUMERIC(10, 2) NOT NULL,
+    manager_id INTEGER REFERENCES employees(employee_id),
+    hire_date DATE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE
+);
+
+-- Категории продуктов (древовидная структура)
+CREATE TABLE categories (
+    category_id SERIAL PRIMARY KEY,
+    category_name VARCHAR(100) NOT NULL,
+    parent_category_id INTEGER REFERENCES categories(category_id),
+    level INTEGER,
+    description TEXT
+);
+
+-- Продукты
+CREATE TABLE products (
+    product_id SERIAL PRIMARY KEY,
+    product_name VARCHAR(200) NOT NULL,
+    category_id INTEGER REFERENCES categories(category_id),
+    price NUMERIC(10, 2) NOT NULL,
+    cost NUMERIC(10, 2) NOT NULL,
+    stock_quantity INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Продажи
+CREATE TABLE sales (
+    sale_id SERIAL PRIMARY KEY,
+    product_id INTEGER REFERENCES products(product_id),
+    employee_id INTEGER REFERENCES employees(employee_id),
+    sale_date DATE NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    unit_price NUMERIC(10, 2) NOT NULL,
+    discount_percent NUMERIC(5, 2) DEFAULT 0
+);
+
+-- Проекты
+CREATE TABLE projects (
+    project_id SERIAL PRIMARY KEY,
+    project_name VARCHAR(200) NOT NULL,
+    department VARCHAR(50),
+    budget NUMERIC(12, 2),
+    start_date DATE,
+    end_date DATE,
+    status VARCHAR(20) DEFAULT 'active'
+);
+
+-- Назначения на проекты
+CREATE TABLE project_assignments (
+    assignment_id SERIAL PRIMARY KEY,
+    project_id INTEGER REFERENCES projects(project_id),
+    employee_id INTEGER REFERENCES employees(employee_id),
+    role VARCHAR(100),
+    hours_allocated INTEGER,
+    hourly_rate NUMERIC(8, 2)
+);
+
+-- Вставка данных: Сотрудники (с иерархией)
+INSERT INTO employees (name, email, department, position, salary, manager_id, hire_date) VALUES
+    -- Топ-менеджмент
+    ('Александр Иванов', 'a.ivanov@company.com', 'Executive', 'CEO', 250000, NULL, '2015-01-10'),
+    
+    -- Директора
+    ('Мария Петрова', 'm.petrova@company.com', 'IT', 'CTO', 200000, 1, '2015-06-15'),
+    ('Сергей Смирнов', 's.smirnov@company.com', 'Sales', 'Head of Sales', 180000, 1, '2016-03-01'),
+    ('Елена Козлова', 'e.kozlova@company.com', 'HR', 'HR Director', 160000, 1, '2016-09-20'),
+    
+    -- IT отдел
+    ('Дмитрий Волков', 'd.volkov@company.com', 'IT', 'Senior Developer', 150000, 2, '2017-02-15'),
+    ('Ольга Морозова', 'o.morozova@company.com', 'IT', 'Senior Developer', 145000, 2, '2017-05-10'),
+    ('Иван Новиков', 'i.novikov@company.com', 'IT', 'Developer', 120000, 5, '2018-11-01'),
+    ('Анна Соколова', 'a.sokolova@company.com', 'IT', 'Developer', 115000, 5, '2019-03-15'),
+    ('Петр Лебедев', 'p.lebedev@company.com', 'IT', 'Junior Developer', 90000, 6, '2020-08-20'),
+    ('Наталья Павлова', 'n.pavlova@company.com', 'IT', 'Junior Developer', 85000, 6, '2021-01-10'),
+    
+    -- Sales отдел
+    ('Виктор Кузнецов', 'v.kuznetsov@company.com', 'Sales', 'Sales Manager', 130000, 3, '2017-07-01'),
+    ('Татьяна Попова', 't.popova@company.com', 'Sales', 'Sales Manager', 125000, 3, '2018-02-14'),
+    ('Андрей Федоров', 'a.fedorov@company.com', 'Sales', 'Sales Rep', 95000, 11, '2019-06-10'),
+    ('Ирина Михайлова', 'i.mikhaylova@company.com', 'Sales', 'Sales Rep', 92000, 11, '2020-04-05'),
+    ('Максим Егоров', 'm.egorov@company.com', 'Sales', 'Sales Rep', 88000, 12, '2020-11-15'),
+    
+    -- HR отдел
+    ('Светлана Романова', 's.romanova@company.com', 'HR', 'HR Manager', 110000, 4, '2017-10-01'),
+    ('Юлия Григорьева', 'y.grigoryeva@company.com', 'HR', 'Recruiter', 85000, 16, '2019-05-20'),
+    ('Олег Николаев', 'o.nikolaev@company.com', 'HR', 'HR Specialist', 80000, 16, '2020-09-10');
+
+-- Категории (иерархическая структура)
+INSERT INTO categories (category_name, parent_category_id, level) VALUES
+    -- Уровень 1
+    ('Электроника', NULL, 1),
+    ('Одежда', NULL, 1),
+    ('Дом и сад', NULL, 1),
+    
+    -- Уровень 2: Электроника
+    ('Компьютеры', 1, 2),
+    ('Смартфоны', 1, 2),
+    ('ТВ и аудио', 1, 2),
+    
+    -- Уровень 3: Компьютеры
+    ('Ноутбуки', 4, 3),
+    ('Настольные ПК', 4, 3),
+    ('Аксессуары для ПК', 4, 3),
+    
+    -- Уровень 3: Аксессуары для ПК
+    ('Клавиатуры', 9, 4),
+    ('Мыши', 9, 4),
+    ('Мониторы', 9, 4),
+    
+    -- Уровень 2: Одежда
+    ('Мужская одежда', 2, 2),
+    ('Женская одежда', 2, 2),
+    ('Детская одежда', 2, 2);
+
+-- Продукты
+INSERT INTO products (product_name, category_id, price, cost, stock_quantity) VALUES
+    ('Ноутбук Pro 15', 7, 85000, 65000, 25),
+    ('Ноутбук Air 13', 7, 65000, 48000, 30),
+    ('ПК Gaming', 8, 120000, 95000, 15),
+    ('Клавиатура механическая RGB', 10, 5500, 3000, 100),
+    ('Мышь беспроводная', 11, 2500, 1200, 150),
+    ('Монитор 27" 4K', 12, 35000, 25000, 40),
+    ('Смартфон X12', 5, 45000, 32000, 60),
+    ('Смартфон Pro Max', 5, 85000, 65000, 35),
+    ('Наушники Bluetooth', 6, 8000, 4500, 80),
+    ('Рубашка мужская', 13, 3500, 1500, 200),
+    ('Платье женское', 14, 5500, 2500, 150),
+    ('Футболка детская', 15, 1200, 500, 300);
+
+-- Продажи (последние 6 месяцев)
+INSERT INTO sales (product_id, employee_id, sale_date, quantity, unit_price, discount_percent)
+SELECT 
+    (random() * 11 + 1)::INTEGER,
+    (random() * 4 + 11)::INTEGER,  -- Sales сотрудники (11-15)
+    CURRENT_DATE - (random() * 180)::INTEGER,
+    (random() * 5 + 1)::INTEGER,
+    p.price * (1 - random() * 0.1),
+    (random() * 15)::NUMERIC(5,2)
+FROM generate_series(1, 300) AS gs
+CROSS JOIN products p
+WHERE p.product_id = (random() * 11 + 1)::INTEGER
+LIMIT 300;
+
+-- Проекты
+INSERT INTO projects (project_name, department, budget, start_date, end_date, status) VALUES
+    ('Новый веб-сайт', 'IT', 500000, '2024-01-01', '2024-06-30', 'active'),
+    ('CRM система', 'IT', 800000, '2024-02-01', '2024-12-31', 'active'),
+    ('Маркетинговая кампания Q1', 'Sales', 300000, '2024-01-01', '2024-03-31', 'completed'),
+    ('HR система', 'HR', 400000, '2024-03-01', '2024-09-30', 'active'),
+    ('Мобильное приложение', 'IT', 1000000, '2024-04-01', '2025-03-31', 'active');
+
+-- Назначения на проекты
+INSERT INTO project_assignments (project_id, employee_id, role, hours_allocated, hourly_rate) VALUES
+    (1, 5, 'Tech Lead', 400, 1500),
+    (1, 7, 'Developer', 600, 1200),
+    (1, 9, 'Junior Developer', 400, 900),
+    (2, 6, 'Tech Lead', 600, 1450),
+    (2, 8, 'Developer', 800, 1150),
+    (2, 10, 'Junior Developer', 600, 850),
+    (3, 11, 'Project Lead', 300, 1300),
+    (3, 13, 'Sales Rep', 200, 950),
+    (4, 16, 'Project Manager', 400, 1100),
+    (4, 17, 'HR Specialist', 300, 850),
+    (5, 5, 'Architect', 500, 1500),
+    (5, 6, 'Tech Lead', 600, 1450),
+    (5, 7, 'Developer', 800, 1200),
+    (5, 8, 'Developer', 800, 1150);
+
+-- Индексы
+CREATE INDEX idx_employees_manager ON employees(manager_id);
+CREATE INDEX idx_categories_parent ON categories(parent_category_id);
+CREATE INDEX idx_sales_date ON sales(sale_date);
+CREATE INDEX idx_sales_employee ON sales(employee_id);
+CREATE INDEX idx_sales_product ON sales(product_id);
+```
+
+## Простые CTE
+
+### Базовое использование CTE
+
+```sql
+-- Простой CTE для улучшения читаемости
+WITH high_earners AS (
+    SELECT 
+        name,
+        department,
+        salary
+    FROM employees
+    WHERE salary > 100000
+)
+SELECT 
+    department,
+    COUNT(*) AS employee_count,
+    ROUND(AVG(salary), 2) AS avg_salary
+FROM high_earners
+GROUP BY department
+ORDER BY avg_salary DESC;
+
+-- Эквивалентный запрос без CTE (менее читаемый)
+SELECT 
+    department,
+    COUNT(*) AS employee_count,
+    ROUND(AVG(salary), 2) AS avg_salary
+FROM (
+    SELECT name, department, salary
+    FROM employees
+    WHERE salary > 100000
+) AS high_earners
+GROUP BY department
+ORDER BY avg_salary DESC;
+```
+
+### Множественные CTE
+
+```sql
+-- Несколько CTE для разбиения сложной логики
+WITH 
+-- CTE 1: Продажи по сотрудникам
+employee_sales AS (
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.department,
+        COUNT(s.sale_id) AS total_sales,
+        SUM(s.quantity * s.unit_price) AS total_revenue
+    FROM employees e
+    LEFT JOIN sales s ON e.employee_id = s.employee_id
+    WHERE e.department = 'Sales'
+    GROUP BY e.employee_id, e.name, e.department
+),
+-- CTE 2: Средние показатели
+department_avg AS (
+    SELECT 
+        AVG(total_sales) AS avg_sales,
+        AVG(total_revenue) AS avg_revenue
+    FROM employee_sales
+),
+-- CTE 3: Сравнение со средними
+performance AS (
+    SELECT 
+        es.name,
+        es.total_sales,
+        es.total_revenue,
+        da.avg_sales,
+        da.avg_revenue,
+        CASE 
+            WHEN es.total_revenue > da.avg_revenue THEN 'Выше среднего'
+            WHEN es.total_revenue = da.avg_revenue THEN 'Средний'
+            ELSE 'Ниже среднего'
+        END AS performance_level
+    FROM employee_sales es
+    CROSS JOIN department_avg da
+)
+SELECT * FROM performance
+ORDER BY total_revenue DESC;
+```
+
+### CTE с JOIN
+
+```sql
+-- CTE с объединением таблиц
+WITH 
+product_sales AS (
+    SELECT 
+        p.product_id,
+        p.product_name,
+        p.category_id,
+        p.price,
+        p.cost,
+        COALESCE(SUM(s.quantity), 0) AS units_sold,
+        COALESCE(SUM(s.quantity * s.unit_price), 0) AS revenue,
+        COALESCE(SUM(s.quantity * (s.unit_price - p.cost)), 0) AS profit
+    FROM products p
+    LEFT JOIN sales s ON p.product_id = s.product_id
+    GROUP BY p.product_id, p.product_name, p.category_id, p.price, p.cost
+),
+category_info AS (
+    SELECT 
+        category_id,
+        category_name
+    FROM categories
+)
+SELECT 
+    ci.category_name,
+    ps.product_name,
+    ps.units_sold,
+    ps.revenue,
+    ps.profit,
+    ROUND(ps.profit / NULLIF(ps.revenue, 0) * 100, 2) AS profit_margin_percent
+FROM product_sales ps
+JOIN category_info ci ON ps.category_id = ci.category_id
+WHERE ps.units_sold > 0
+ORDER BY ps.profit DESC;
+```
+
+### Переиспользование CTE
+
+```sql
+-- CTE может ссылаться на предыдущие CTE
+WITH 
+sales_by_month AS (
+    SELECT 
+        DATE_TRUNC('month', sale_date) AS month,
+        SUM(quantity * unit_price) AS monthly_revenue
+    FROM sales
+    GROUP BY DATE_TRUNC('month', sale_date)
+),
+revenue_with_totals AS (
+    SELECT 
+        month,
+        monthly_revenue,
+        SUM(monthly_revenue) OVER (ORDER BY month) AS cumulative_revenue,
+        SUM(monthly_revenue) OVER () AS total_revenue
+    FROM sales_by_month
+)
+SELECT 
+    TO_CHAR(month, 'Month YYYY') AS period,
+    monthly_revenue,
+    cumulative_revenue,
+    ROUND(cumulative_revenue / total_revenue * 100, 2) AS percent_of_total
+FROM revenue_with_totals
+ORDER BY month;
+```
+
+## Рекурсивные CTE
+
+### Основы рекурсии
+
+**Рекурсивный CTE** состоит из двух частей:
+1. **Базовый запрос (anchor)** — начальные строки
+2. **Рекурсивный запрос** — ссылается на сам CTE
+
+```sql
+WITH RECURSIVE recursive_cte AS (
+    -- Базовый запрос (anchor)
+    SELECT ... WHERE ...
+    
+    UNION ALL
+    
+    -- Рекурсивный запрос
+    SELECT ... FROM recursive_cte WHERE ...
+)
+SELECT * FROM recursive_cte;
+```
+
+### Простая рекурсия: числа от 1 до 10
+
+```sql
+-- Генерация последовательности чисел
+WITH RECURSIVE numbers AS (
+    -- Базовый случай: начинаем с 1
+    SELECT 1 AS n
+    
+    UNION ALL
+    
+    -- Рекурсивный случай: добавляем 1
+    SELECT n + 1
+    FROM numbers
+    WHERE n < 10
+)
+SELECT n FROM numbers;
+```
+
+**Как это работает:**
+1. Базовый запрос возвращает `1`
+2. Рекурсивный запрос берет `1` и возвращает `2`
+3. Затем берет `2` и возвращает `3`
+4. И так далее до 10
+
+### Иерархия сотрудников
+
+```sql
+-- Построение организационной иерархии от CEO вниз
+WITH RECURSIVE org_hierarchy AS (
+    -- Базовый случай: CEO (нет менеджера)
+    SELECT 
+        employee_id,
+        name,
+        position,
+        department,
+        manager_id,
+        salary,
+        1 AS level,
+        name AS path,
+        ARRAY[employee_id] AS path_ids
+    FROM employees
+    WHERE manager_id IS NULL
+    
+    UNION ALL
+    
+    -- Рекурсивный случай: подчиненные
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.position,
+        e.department,
+        e.manager_id,
+        e.salary,
+        oh.level + 1,
+        oh.path || ' → ' || e.name,
+        oh.path_ids || e.employee_id
+    FROM employees e
+    INNER JOIN org_hierarchy oh ON e.manager_id = oh.employee_id
+)
+SELECT 
+    REPEAT('  ', level - 1) || name AS hierarchy,
+    position,
+    department,
+    salary,
+    level,
+    path
+FROM org_hierarchy
+ORDER BY path_ids;
+```
+
+**Результат:**
+```
+hierarchy                      position              department  salary   level
+─────────────────────────────────────────────────────────────────────────────
+Александр Иванов               CEO                   Executive   250000   1
+  Мария Петрова                CTO                   IT          200000   2
+    Дмитрий Волков             Senior Developer      IT          150000   3
+      Иван Новиков             Developer             IT          120000   4
+    Ольга Морозова             Senior Developer      IT          145000   3
+      Петр Лебедев             Junior Developer      IT          90000    4
+  Сергей Смирнов               Head of Sales         Sales       180000   2
+    Виктор Кузнецов            Sales Manager         Sales       130000   3
+      Андрей Федоров           Sales Rep             Sales       95000    4
+...
+```
+
+### Подчиненные конкретного менеджера
+
+```sql
+-- Все подчиненные (прямые и косвенные) конкретного менеджера
+WITH RECURSIVE subordinates AS (
+    -- Базовый случай: сам менеджер
+    SELECT 
+        employee_id,
+        name,
+        position,
+        manager_id,
+        salary,
+        0 AS level
+    FROM employees
+    WHERE employee_id = 2  -- CTO (Мария Петрова)
+    
+    UNION ALL
+    
+    -- Рекурсивный случай: их подчиненные
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.position,
+        e.manager_id,
+        e.salary,
+        s.level + 1
+    FROM employees e
+    INNER JOIN subordinates s ON e.manager_id = s.employee_id
+)
+SELECT 
+    REPEAT('  ', level) || name AS name,
+    position,
+    salary,
+    level
+FROM subordinates
+ORDER BY level, name;
+```
+
+### Путь к корню (снизу вверх)
+
+```sql
+-- Путь от сотрудника до CEO
+WITH RECURSIVE management_chain AS (
+    -- Базовый случай: конкретный сотрудник
+    SELECT 
+        employee_id,
+        name,
+        position,
+        manager_id,
+        salary,
+        1 AS level,
+        name AS chain
+    FROM employees
+    WHERE employee_id = 9  -- Петр Лебедев (Junior Developer)
+    
+    UNION ALL
+    
+    -- Рекурсивный случай: его менеджеры
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.position,
+        e.manager_id,
+        e.salary,
+        mc.level + 1,
+        mc.chain || ' ← ' || e.name
+    FROM employees e
+    INNER JOIN management_chain mc ON e.employee_id = mc.manager_id
+)
+SELECT 
+    level,
+    name,
+    position,
+    chain
+FROM management_chain
+ORDER BY level DESC;
+```
+
+### Иерархия категорий
+
+```sql
+-- Построение дерева категорий
+WITH RECURSIVE category_tree AS (
+    -- Базовый случай: корневые категории
+    SELECT 
+        category_id,
+        category_name,
+        parent_category_id,
+        1 AS level,
+        category_name AS path,
+        ARRAY[category_id] AS path_ids
+    FROM categories
+    WHERE parent_category_id IS NULL
+    
+    UNION ALL
+    
+    -- Рекурсивный случай: дочерние категории
+    SELECT 
+        c.category_id,
+        c.category_name,
+        c.parent_category_id,
+        ct.level + 1,
+        ct.path || ' > ' || c.category_name,
+        ct.path_ids || c.category_id
+    FROM categories c
+    INNER JOIN category_tree ct ON c.parent_category_id = ct.category_id
+)
+SELECT 
+    REPEAT('  ', level - 1) || category_name AS hierarchy,
+    level,
+    path,
+    (SELECT COUNT(*) 
+     FROM products p 
+     WHERE p.category_id = ct.category_id) AS product_count
+FROM category_tree ct
+ORDER BY path_ids;
+```
+
+### Подсчет потомков
+
+```sql
+-- Количество подчиненных для каждого менеджера
+WITH RECURSIVE subordinate_count AS (
+    SELECT 
+        employee_id,
+        name,
+        manager_id,
+        0 AS direct_reports,
+        0 AS total_reports
+    FROM employees
+    WHERE employee_id NOT IN (
+        SELECT DISTINCT manager_id 
+        FROM employees 
+        WHERE manager_id IS NOT NULL
+    )
+    
+    UNION ALL
+    
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.manager_id,
+        COUNT(sc.employee_id) OVER (PARTITION BY e.employee_id),
+        COUNT(sc.employee_id) OVER (PARTITION BY e.employee_id) + SUM(sc.total_reports) OVER (PARTITION BY e.employee_id)
+    FROM employees e
+    INNER JOIN subordinate_count sc ON sc.manager_id = e.employee_id
+)
+SELECT DISTINCT
+    employee_id,
+    name,
+    direct_reports,
+    total_reports
+FROM subordinate_count
+WHERE direct_reports > 0
+ORDER BY total_reports DESC;
+
+-- Более простой вариант
+WITH RECURSIVE emp_tree AS (
+    SELECT 
+        employee_id,
+        name,
+        manager_id,
+        1 AS is_leaf
+    FROM employees
+    WHERE employee_id NOT IN (
+        SELECT DISTINCT manager_id FROM employees WHERE manager_id IS NOT NULL
+    )
+    
+    UNION ALL
+    
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.manager_id,
+        0
+    FROM employees e
+    INNER JOIN emp_tree et ON et.manager_id = e.employee_id
+)
+SELECT 
+    e.employee_id,
+    e.name,
+    e.position,
+    COUNT(et.employee_id) AS total_subordinates
+FROM employees e
+LEFT JOIN emp_tree et ON et.manager_id = e.employee_id OR (et.manager_id IN (
+    SELECT employee_id FROM emp_tree WHERE manager_id = e.employee_id
+))
+GROUP BY e.employee_id, e.name, e.position
+HAVING COUNT(et.employee_id) > 0
+ORDER BY total_subordinates DESC;
+```
+
+## Продвинутые техники рекурсии
+
+### Предотвращение бесконечной рекурсии
+
+```sql
+-- Защита от циклов в данных
+WITH RECURSIVE safe_hierarchy AS (
+    SELECT 
+        employee_id,
+        name,
+        manager_id,
+        1 AS level,
+        ARRAY[employee_id] AS visited
+    FROM employees
+    WHERE manager_id IS NULL
+    
+    UNION ALL
+    
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.manager_id,
+        sh.level + 1,
+        sh.visited || e.employee_id
+    FROM employees e
+    INNER JOIN safe_hierarchy sh ON e.manager_id = sh.employee_id
+    WHERE NOT (e.employee_id = ANY(sh.visited))  -- Проверка цикла
+      AND sh.level < 10  -- Максимальная глубина
+)
+SELECT * FROM safe_hierarchy
+ORDER BY level, name;
+```
+
+### Генерация дат
+
+```sql
+-- Генерация всех дат за период
+WITH RECURSIVE date_series AS (
+    SELECT DATE '2024-01-01' AS date
+    
+    UNION ALL
+    
+    SELECT date + INTERVAL '1 day'
+    FROM date_series
+    WHERE date < DATE '2024-12-31'
+)
+SELECT 
+    date,
+    TO_CHAR(date, 'Day') AS day_of_week,
+    EXTRACT(WEEK FROM date) AS week_number
+FROM date_series
+LIMIT 10;
+
+-- Продажи по дням (заполнить пропуски нулями)
+WITH RECURSIVE all_dates AS (
+    SELECT MIN(sale_date) AS date FROM sales
+    UNION ALL
+    SELECT date + 1
+    FROM all_dates
+    WHERE date < (SELECT MAX(sale_date) FROM sales)
+),
+daily_sales AS (
+    SELECT 
+        sale_date,
+        SUM(quantity * unit_price) AS revenue
+    FROM sales
+    GROUP BY sale_date
+)
+SELECT 
+    ad.date,
+    COALESCE(ds.revenue, 0) AS revenue,
+    TO_CHAR(ad.date, 'Day') AS day_name
+FROM all_dates ad
+LEFT JOIN daily_sales ds ON ad.date = ds.sale_date
+ORDER BY ad.date;
+```
+
+### Факториал
+
+```sql
+-- Вычисление факториала через рекурсию
+WITH RECURSIVE factorial AS (
+    SELECT 
+        1 AS n,
+        1::BIGINT AS fact
+    
+    UNION ALL
+    
+    SELECT 
+        n + 1,
+        fact * (n + 1)
+    FROM factorial
+    WHERE n < 20
+)
+SELECT 
+    n,
+    fact,
+    TO_CHAR(fact, '999,999,999,999,999,999') AS formatted
+FROM factorial;
+```
+
+### Последовательность Фибоначчи
+
+```sql
+-- Числа Фибоначчи
+WITH RECURSIVE fibonacci AS (
+    SELECT 
+        1 AS n,
+        0::BIGINT AS fib,
+        1::BIGINT AS next_fib
+    
+    UNION ALL
+    
+    SELECT 
+        n + 1,
+        next_fib,
+        fib + next_fib
+    FROM fibonacci
+    WHERE n < 30
+)
+SELECT 
+    n,
+    fib AS fibonacci_number
+FROM fibonacci;
+```
+
+### Граф и поиск путей
+
+```sql
+-- Создадим таблицу связей (граф)
+CREATE TABLE connections (
+    from_id INTEGER,
+    to_id INTEGER,
+    distance INTEGER
+);
+
+INSERT INTO connections VALUES
+    (1, 2, 5), (1, 3, 3),
+    (2, 4, 2), (2, 5, 6),
+    (3, 4, 4), (3, 6, 7),
+    (4, 7, 3), (5, 7, 2),
+    (6, 7, 5);
+
+-- Поиск всех путей от узла 1 до узла 7
+WITH RECURSIVE paths AS (
+    -- Базовый случай: начинаем с узла 1
+    SELECT 
+        from_id,
+        to_id,
+        distance,
+        ARRAY[from_id, to_id] AS path,
+        distance AS total_distance
+    FROM connections
+    WHERE from_id = 1
+    
+    UNION ALL
+    
+    -- Рекурсивный случай: продолжаем путь
+    SELECT 
+        c.from_id,
+        c.to_id,
+        c.distance,
+        p.path || c.to_id,
+        p.total_distance + c.distance
+    FROM connections c
+    INNER JOIN paths p ON c.from_id = p.to_id
+    WHERE NOT (c.to_id = ANY(p.path))  -- Избегаем циклов
+)
+SELECT 
+    path,
+    total_distance
+FROM paths
+WHERE to_id = 7
+ORDER BY total_distance;
+
+-- Кратчайший путь
+WITH RECURSIVE shortest_path AS (
+    SELECT 
+        from_id,
+        to_id,
+        distance,
+        ARRAY[from_id, to_id] AS path,
+        distance AS total_distance
+    FROM connections
+    WHERE from_id = 1
+    
+    UNION ALL
+    
+    SELECT 
+        c.from_id,
+        c.to_id,
+        c.distance,
+        sp.path || c.to_id,
+        sp.total_distance + c.distance
+    FROM connections c
+    INNER JOIN shortest_path sp ON c.from_id = sp.to_id
+    WHERE NOT (c.to_id = ANY(sp.path))
+      AND sp.total_distance + c.distance <= 20  -- Ограничение глубины
+)
+SELECT 
+    path,
+    total_distance
+FROM shortest_path
+WHERE to_id = 7
+ORDER BY total_distance
+LIMIT 1;
+```
+
+## Материализация CTE
+
+### MATERIALIZED vs NOT MATERIALIZED
+
+По умолчанию PostgreSQL решает сам, материализовать CTE или встроить его в запрос.
+
+```sql
+-- Принудительная материализация (вычислить один раз)
+WITH sales_summary AS MATERIALIZED (
+    SELECT 
+        product_id,
+        SUM(quantity) AS total_quantity,
+        SUM(quantity * unit_price) AS total_revenue
+    FROM sales
+    GROUP BY product_id
+)
+SELECT 
+    p.product_name,
+    ss.total_quantity,
+    ss.total_revenue
+FROM sales_summary ss
+JOIN products p ON ss.product_id = p.product_id
+WHERE ss.total_revenue > 10000;
+
+-- Запретить материализацию (встроить в запрос)
+WITH sales_summary AS NOT MATERIALIZED (
+    SELECT 
+        product_id,
+        SUM(quantity) AS total_quantity,
+        SUM(quantity * unit_price) AS total_revenue
+    FROM sales
+    GROUP BY product_id
+)
+SELECT 
+    p.product_name,
+    ss.total_quantity,
+    ss.total_revenue
+FROM sales_summary ss
+JOIN products p ON ss.product_id = p.product_id
+WHERE ss.total_revenue > 10000;
+```
+
+:::tip Когда использовать MATERIALIZED
+- CTE используется **несколько раз** в запросе
+- CTE содержит **сложные вычисления**
+- Хотите **избежать повторного выполнения** подзапроса
+
+Когда использовать NOT MATERIALIZED:
+- CTE используется **один раз**
+- Оптимизатор может **лучше оптимизировать** встроенный запрос
+- CTE содержит **фильтры**, которые могут быть применены раньше
+:::
+
+## Модифицирующие CTE (Data-Modifying CTE)
+
+### INSERT с RETURNING в CTE
+
+```sql
+-- Вставка и использование возвращенных данных
+WITH new_employees AS (
+    INSERT INTO employees (name, email, department, position, salary, manager_id, hire_date)
+    VALUES 
+        ('Новый Сотрудник 1', 'new1@company.com', 'IT', 'Developer', 100000, 5, CURRENT_DATE),
+        ('Новый Сотрудник 2', 'new2@company.com', 'Sales', 'Sales Rep', 85000, 11, CURRENT_DATE)
+    RETURNING employee_id, name, department, salary
+)
+SELECT 
+    ne.name,
+    ne.department,
+    ne.salary,
+    e.name AS manager_name
+FROM new_employees ne
+LEFT JOIN employees e ON ne.employee_id = e.employee_id;  -- Это не даст результата, нужен другой JOIN
+```
+
+### UPDATE в CTE
+
+```sql
+-- Обновление с использованием CTE
+WITH salary_increase AS (
+    UPDATE employees
+    SET salary = salary * 1.10
+    WHERE department = 'IT' 
+      AND salary < 120000
+    RETURNING employee_id, name, salary AS new_salary, salary / 1.10 AS old_salary
+)
+SELECT 
+    name,
+    ROUND(old_salary, 2) AS old_salary,
+    ROUND(new_salary, 2) AS new_salary,
+    ROUND(new_salary - old_salary, 2) AS increase
+FROM salary_increase
+ORDER BY increase DESC;
+```
+
+### DELETE в CTE
+
+```sql
+-- Удаление с сохранением информации
+WITH deleted_inactive AS (
+    DELETE FROM employees
+    WHERE is_active = FALSE
+      AND hire_date < CURRENT_DATE - INTERVAL '5 years'
+    RETURNING employee_id, name, department, hire_date
+)
+SELECT 
+    COUNT(*) AS deleted_count,
+    STRING_AGG(name, ', ') AS deleted_employees
+FROM deleted_inactive;
+```
+
+### Сложный пример: перенос данных
+
+```sql
+-- Архивирование старых продаж
+CREATE TABLE sales_archive (LIKE sales INCLUDING ALL);
+
+WITH archived AS (
+    DELETE FROM sales
+    WHERE sale_date < CURRENT_DATE - INTERVAL '2 years'
+    RETURNING *
+),
+inserted AS (
+    INSERT INTO sales_archive
+    SELECT * FROM archived
+    RETURNING sale_id, sale_date, quantity * unit_price AS amount
+)
+SELECT 
+    COUNT(*) AS archived_records,
+    MIN(sale_date) AS earliest_date,
+    MAX(sale_date) AS latest_date,
+    SUM(amount) AS total_amount
+FROM inserted;
+```
+
+## Практические примеры
+
+### Анализ продаж по иерархии категорий
+
+```sql
+-- Продажи с полным путем категории
+WITH RECURSIVE category_path AS (
+    -- Базовый случай: конечные категории с продуктами
+    SELECT DISTINCT
+        c.category_id,
+        c.category_name,
+        c.parent_category_id,
+        c.category_name AS full_path,
+        1 AS level
+    FROM categories c
+    INNER JOIN products p ON c.category_id = p.category_id
+    
+    UNION ALL
+    
+    -- Рекурсивный случай: родительские категории
+    SELECT 
+        c.category_id,
+        c.category_name,
+        c.parent_category_id,
+        c.category_name || ' > ' || cp.full_path,
+        cp.level + 1
+    FROM categories c
+    INNER JOIN category_path cp ON c.category_id = cp.parent_category_id
+),
+product_sales AS (
+    SELECT 
+        p.product_id,
+        p.product_name,
+        p.category_id,
+        SUM(s.quantity) AS units_sold,
+        SUM(s.quantity * s.unit_price) AS revenue
+    FROM products p
+    LEFT JOIN sales s ON p.product_id = s.product_id
+    GROUP BY p.product_id, p.product_name, p.category_id
+)
+SELECT 
+    cp.full_path,
+    ps.product_name,
+    ps.units_sold,
+    ps.revenue
+FROM product_sales ps
+JOIN (
+    SELECT category_id, full_path
+    FROM category_path
+    WHERE level = (SELECT MAX(level) FROM category_path WHERE category_id = category_path.category_id)
+) cp ON ps.category_id = cp.category_id
+ORDER BY cp.full_path, ps.revenue DESC;
+```
+
+### Расчет зарплатного фонда по иерархии
+
+```sql
+-- Общая зарплата для каждого менеджера (включая подчиненных)
+WITH RECURSIVE team_salaries AS (
+    -- Базовый случай: сотрудники без подчиненных
+    SELECT 
+        employee_id,
+        name,
+        manager_id,
+        salary,
+        salary AS total_team_salary,
+        1 AS team_size
+    FROM employees
+    WHERE employee_id NOT IN (
+        SELECT DISTINCT manager_id FROM employees WHERE manager_id IS NOT NULL
+    )
+    
+    UNION ALL
+    
+    -- Рекурсивный случай: менеджеры
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.manager_id,
+        e.salary,
+        e.salary + COALESCE(SUM(ts.total_team_salary) OVER (PARTITION BY e.employee_id), 0),
+        1 + COALESCE(SUM(ts.team_size) OVER (PARTITION BY e.employee_id), 0)
+    FROM employees e
+    LEFT JOIN team_salaries ts ON ts.manager_id = e.employee_id
+    WHERE e.employee_id IN (
+        SELECT DISTINCT manager_id FROM employees WHERE manager_id IS NOT NULL
+    )
+)
+SELECT DISTINCT
+    employee_id,
+    name,
+    salary AS own_salary,
+    total_team_salary,
+    team_size,
+    ROUND(total_team_salary / team_size, 2) AS avg_team_salary
+FROM team_salaries
+WHERE team_size > 1
+ORDER BY total_team_salary DESC;
+
+-- Более простой подход
+WITH RECURSIVE org_tree AS (
+    SELECT 
+        employee_id,
+        name,
+        salary,
+        manager_id,
+        salary AS subtree_salary,
+        1 AS subordinate_count
+    FROM employees
+    
+    UNION ALL
+    
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.salary,
+        e.manager_id,
+        ot.subtree_salary,
+        ot.subordinate_count
+    FROM employees e
+    JOIN org_tree ot ON e.employee_id = ot.manager_id
+)
+SELECT 
+    employee_id,
+    name,
+    salary,
+    SUM(subtree_salary) AS total_team_cost,
+    COUNT(*) - 1 AS direct_and_indirect_reports
+FROM org_tree
+GROUP BY employee_id, name, salary
+HAVING COUNT(*) > 1
+ORDER BY total_team_cost DESC;
+```
+
+### Календарь с продажами
+
+```sql
+-- Генерация календаря и заполнение данными о продажах
+WITH RECURSIVE calendar AS (
+    SELECT 
+        DATE_TRUNC('month', MIN(sale_date))::DATE AS date
+    FROM sales
+    
+    UNION ALL
+    
+    SELECT date + 1
+    FROM calendar
+    WHERE date < DATE_TRUNC('month', (SELECT MAX(sale_date) FROM sales)) + INTERVAL '1 month - 1 day'
+),
+daily_sales AS (
+    SELECT 
+        sale_date,
+        COUNT(*) AS transaction_count,
+        SUM(quantity) AS items_sold,
+        SUM(quantity * unit_price) AS revenue
+    FROM sales
+    GROUP BY sale_date
+)
+SELECT 
+    c.date,
+    TO_CHAR(c.date, 'Day') AS day_of_week,
+    EXTRACT(DOW FROM c.date) AS dow,
+    COALESCE(ds.transaction_count, 0) AS transactions,
+    COALESCE(ds.items_sold, 0) AS items,
+    COALESCE(ds.revenue, 0) AS revenue,
+    SUM(COALESCE(ds.revenue, 0)) OVER (
+        PARTITION BY DATE_TRUNC('month', c.date)
+        ORDER BY c.date
+    ) AS month_cumulative
+FROM calendar c
+LEFT JOIN daily_sales ds ON c.date = ds.sale_date
+ORDER BY c.date;
+```
+
+### Сравнение производительности сотрудников
+
+```sql
+-- Ранжирование продавцов с учетом их менеджеров
+WITH RECURSIVE sales_hierarchy AS (
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.manager_id,
+        e.position,
+        1 AS level,
+        ARRAY[e.employee_id] AS path
+    FROM employees e
+    WHERE e.department = 'Sales' AND e.manager_id IS NULL
+    
+    UNION ALL
+    
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.manager_id,
+        e.position,
+        sh.level + 1,
+        sh.path || e.employee_id
+    FROM employees e
+    JOIN sales_hierarchy sh ON e.manager_id = sh.employee_id
+    WHERE e.department = 'Sales'
+),
+sales_performance AS (
+    SELECT 
+        s.employee_id,
+        COUNT(DISTINCT s.sale_id) AS sales_count,
+        SUM(s.quantity * s.unit_price) AS total_revenue,
+        AVG(s.quantity * s.unit_price) AS avg_sale_value
+    FROM sales s
+    GROUP BY s.employee_id
+)
+SELECT 
+    REPEAT('  ', sh.level - 1) || sh.name AS hierarchy,
+    sh.position,
+    sh.level,
+    COALESCE(sp.sales_count, 0) AS sales,
+    COALESCE(sp.total_revenue, 0) AS revenue,
+    COALESCE(sp.avg_sale_value, 0) AS avg_sale,
+    RANK() OVER (PARTITION BY sh.level ORDER BY sp.total_revenue DESC) AS rank_in_level
+FROM sales_hierarchy sh
+LEFT JOIN sales_performance sp ON sh.employee_id = sp.employee_id
+ORDER BY sh.path;
+```
+
+### Билл материалов (Bill of Materials - BOM)
+
+```sql
+-- Создадим структуру продукта
+CREATE TABLE components (
+    component_id SERIAL PRIMARY KEY,
+    component_name VARCHAR(100),
+    parent_component_id INTEGER REFERENCES components(component_id),
+    quantity_required INTEGER DEFAULT 1,
+    unit_cost NUMERIC(10, 2)
+);
+
+INSERT INTO components (component_name, parent_component_id, quantity_required, unit_cost) VALUES
+    -- Готовый продукт
+    ('Компьютер', NULL, 1, 0),
+    
+    -- Уровень 1
+    ('Системный блок', 1, 1, 0),
+    ('Монитор', 1, 1, 15000),
+    ('Клавиатура', 1, 1, 2000),
+    ('Мышь', 1, 1, 1000),
+    
+    -- Уровень 2 (компоненты системного блока)
+    ('Материнская плата', 2, 1, 8000),
+    ('Процессор', 2, 1, 25000),
+    ('ОЗУ', 2, 2, 4000),  -- 2 планки
+    ('SSD', 2, 1, 6000),
+    ('Блок питания', 2, 1, 5000),
+    ('Корпус', 2, 1, 3000),
+    
+    -- Уровень 3
+    ('Система охлаждения', 7, 1, 2000),
+    ('Термопаста', 7, 1, 500);
+
+-- Расчет полной стоимости компьютера
+WITH RECURSIVE bom AS (
+    -- Базовый случай: готовый продукт
+    SELECT 
+        component_id,
+        component_name,
+        parent_component_id,
+        quantity_required,
+        unit_cost,
+        1 AS level,
+        component_name AS path,
+        quantity_required AS total_quantity,
+        unit_cost AS total_cost
+    FROM components
+    WHERE component_id = 1
+    
+    UNION ALL
+    
+    -- Рекурсивный случай: все компоненты
+    SELECT 
+        c.component_id,
+        c.component_name,
+        c.parent_component_id,
+        c.quantity_required,
+        c.unit_cost,
+        b.level + 1,
+        b.path || ' > ' || c.component_name,
+        b.total_quantity * c.quantity_required,
+        c.unit_cost * b.total_quantity * c.quantity_required
+    FROM components c
+    JOIN bom b ON c.parent_component_id = b.component_id
+)
+SELECT 
+    REPEAT('  ', level - 1) || component_name AS hierarchy,
+    level,
+    total_quantity,
+    unit_cost,
+    total_cost
+FROM bom
+ORDER BY path;
+
+-- Итоговая стоимость
+WITH RECURSIVE bom AS (
+    SELECT 
+        component_id,
+        component_name,
+        parent_component_id,
+        quantity_required,
+        unit_cost,
+        1 AS total_quantity
+    FROM components
+    WHERE component_id = 1
+    
+    UNION ALL
+    
+    SELECT 
+        c.component_id,
+        c.component_name,
+        c.parent_component_id,
+        c.quantity_required,
+        c.unit_cost,
+        b.total_quantity * c.quantity_required
+    FROM components c
+    JOIN bom b ON c.parent_component_id = b.component_id
+)
+SELECT 
+    SUM(unit_cost * total_quantity) AS total_product_cost
+FROM bom
+WHERE unit_cost > 0;
+```
+
+## Оптимизация CTE
+
+### EXPLAIN с CTE
+
+```sql
+-- Анализ плана выполнения
+EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
+WITH sales_summary AS (
+    SELECT 
+        employee_id,
+        COUNT(*) AS sale_count,
+        SUM(quantity * unit_price) AS total_revenue
+    FROM sales
+    WHERE sale_date >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY employee_id
+)
+SELECT 
+    e.name,
+    e.department,
+    ss.sale_count,
+    ss.total_revenue
+FROM sales_summary ss
+JOIN employees e ON ss.employee_id = e.employee_id
+WHERE ss.total_revenue > 50000
+ORDER BY ss.total_revenue DESC;
+```
+
+### Индексы для рекурсивных запросов
+
+```sql
+-- Создание индексов для оптимизации рекурсии
+CREATE INDEX idx_employees_manager_id ON employees(manager_id) 
+WHERE manager_id IS NOT NULL;
+
+CREATE INDEX idx_categories_parent_id ON categories(parent_category_id) 
+WHERE parent_category_id IS NOT NULL;
+
+-- Составной индекс для путей
+CREATE INDEX idx_employees_manager_id_name ON employees(manager_id, name);
+```
+
+### Ограничение глубины рекурсии
+
+```sql
+-- Ограничение для предотвращения бесконечных циклов
+WITH RECURSIVE limited_hierarchy AS (
+    SELECT 
+        employee_id,
+        name,
+        manager_id,
+        1 AS level
+    FROM employees
+    WHERE manager_id IS NULL
+    
+    UNION ALL
+    
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.manager_id,
+        lh.level + 1
+    FROM employees e
+    JOIN limited_hierarchy lh ON e.manager_id = lh.employee_id
+    WHERE lh.level < 5  -- Максимум 5 уровней
+)
+SELECT * FROM limited_hierarchy;
+```
+
+## Распространенные ошибки и решения
+
+### Забыли RECURSIVE
+
+```sql
+-- ❌ Ошибка: missing RECURSIVE
+WITH org_chart AS (
+    SELECT employee_id, name, manager_id FROM employees WHERE manager_id IS NULL
+    UNION ALL
+    SELECT e.employee_id, e.name, e.manager_id 
+    FROM employees e 
+    JOIN org_chart oc ON e.manager_id = oc.employee_id
+)
+SELECT * FROM org_chart;
+
+-- ✅ Правильно
+WITH RECURSIVE org_chart AS (
+    SELECT employee_id, name, manager_id FROM employees WHERE manager_id IS NULL
+    UNION ALL
+    SELECT e.employee_id, e.name, e.manager_id 
+    FROM employees e 
+    JOIN org_chart oc ON e.manager_id = oc.employee_id
+)
+SELECT * FROM org_chart;
+```
+
+### Бесконечная рекурсия
+
+```sql
+-- ❌ Бесконечная рекурсия (нет условия остановки)
+WITH RECURSIVE infinite AS (
+    SELECT 1 AS n
+    UNION ALL
+    SELECT n + 1 FROM infinite  -- Никогда не остановится!
+)
+SELECT * FROM infinite;
+
+-- ✅ Правильно (с условием остановки)
+WITH RECURSIVE finite AS (
+    SELECT 1 AS n
+    UNION ALL
+    SELECT n + 1 FROM finite WHERE n < 10
+)
+SELECT * FROM finite;
+```
+
+### Циклы в данных
+
+```sql
+-- Защита от циклов в иерархических данных
+WITH RECURSIVE safe_tree AS (
+    SELECT 
+        employee_id,
+        name,
+        manager_id,
+        ARRAY[employee_id] AS path
+    FROM employees
+    WHERE manager_id IS NULL
+    
+    UNION ALL
+    
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.manager_id,
+        st.path || e.employee_id
+    FROM employees e
+    JOIN safe_tree st ON e.manager_id = st.employee_id
+    WHERE NOT (e.employee_id = ANY(st.path))  -- Проверка на цикл
+)
+SELECT * FROM safe_tree;
+```
+
+## Лучшие практики
+
+### Именование CTE
+
+```sql
+-- ✅ Хорошие имена (описывают содержимое)
+WITH 
+    active_employees AS (...),
+    monthly_sales_summary AS (...),
+    top_performers AS (...)
+SELECT ...
+
+-- ❌ Плохие имена
+WITH 
+    cte1 AS (...),
+    temp AS (...),
+    x AS (...)
+SELECT ...
+```
+
+### Модульность
+
+```sql
+-- ✅ Разбиение сложной логики на шаги
+WITH 
+    -- Шаг 1: Фильтрация данных
+    recent_sales AS (
+        SELECT * FROM sales 
+        WHERE sale_date >= CURRENT_DATE - INTERVAL '30 days'
+    ),
+    -- Шаг 2: Агрегация
+    employee_totals AS (
+        SELECT 
+            employee_id,
+            SUM(quantity * unit_price) AS revenue
+        FROM recent_sales
+        GROUP BY employee_id
+    ),
+    -- Шаг 3: Ранжирование
+    ranked_employees AS (
+        SELECT 
+            *,
+            RANK() OVER (ORDER BY revenue DESC) AS rank
+        FROM employee_totals
+    )
+SELECT * FROM ranked_employees WHERE rank <= 10;
+```
+
+### Документирование
+
+```sql
+-- Комментируйте сложные CTE
+WITH RECURSIVE employee_hierarchy AS (
+    /*
+     * Построение иерархии сотрудников от CEO вниз.
+     * Включает путь в виде массива ID для обнаружения циклов.
+     */
+    
+    -- Базовый случай: CEO и топ-менеджеры без руководителя
+    SELECT 
+        employee_id,
+        name,
+        manager_id,
+        1 AS level,
+        ARRAY[employee_id] AS path
+    FROM employees
+    WHERE manager_id IS NULL
+    
+    UNION ALL
+    
+    -- Рекурсивный случай: подчиненные на каждом уровне
+    SELECT 
+        e.employee_id,
+        e.name,
+        e.manager_id,
+        eh.level + 1,
+        eh.path || e.employee_id
+    FROM employees e
+    JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id
+    WHERE NOT (e.employee_id = ANY(eh.path))  -- Защита от циклов
+      AND eh.level < 10  -- Ограничение глубины
+)
+SELECT * FROM employee_hierarchy
+ORDER BY path;
+```

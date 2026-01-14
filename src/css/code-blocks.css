@@ -1,7 +1,6 @@
 /* Styling of GraphQL code blocks */
 .graphql-code-block {
     background-color: var(--ifm-pre-background);
-    border-radius: var(--ifm-pre-border-radius);
     padding: var(--ifm-pre-padding);
     color: var(--ifm-pre-color);
     font: var(--ifm-code-font-size) / var(--ifm-pre-line-height)

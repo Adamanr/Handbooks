@@ -181,7 +181,6 @@ h2:hover::before {
 /* Code blocks with gradient border */
 pre[class*="language-"] {
     tab-size: 4;
-    border-radius: 12px;
     position: relative;
 
     box-shadow: var(--shadow-md);
@@ -206,8 +205,13 @@ pre[class*="language-"]:hover {
     box-shadow: var(--shadow-glow);
 }
 
+.prism-code {
+    border-radius: 0;
+}
+
 .limited-height-code-block pre.prism-code {
     max-height: 800px;
+    border-radius: 0px;
 }
 
 /* Members wrapper with modern design */

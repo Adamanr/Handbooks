@@ -1,0 +1,775 @@
+---
+id: module-06-windows-functions
+title: "Оконные функции: аналитика и ранжирование"
+sidebar_label: "Оконные функции"
+sidebar_position: 6
+description: "Полное руководство по оконным функциям, аналитике и ранжированию"
+keywords: [postgresql, window_functions]
+---
+
+import { CodeBlockGoPostgres } from "../../src/components/practicModules/practic";
+
+# Оконные функции (Window Functions): аналитика и ранжирование
+
+## Введение
+
+Оконные функции (Window Functions) — это одна из самых мощных возможностей SQL для аналитики данных. Они позволяют выполнять вычисления над набором строк, связанных с текущей строкой, не группируя результаты как это делает GROUP BY. Это открывает невероятные возможности для ранжирования, анализа трендов, расчета накопительных итогов и многого другого.
+
+<CodeBlockGoPostgres />
+
+## Что такое оконные функции?
+
+### Основная концепция
+
+**Оконная функция** выполняет вычисление для набора строк (называемого "окном"), связанного с текущей строкой, но в отличие от GROUP BY:
+- **Не сворачивает** строки в группы
+- **Сохраняет** все исходные строки в результате
+- **Добавляет** вычисленное значение к каждой строке
+
+```sql
+-- GROUP BY — сворачивает строки
+SELECT 
+    department,
+    AVG(salary) as avg_salary
+FROM employees
+GROUP BY department;
+-- Результат: 3 строки (по одной на отдел)
+
+-- Window Function — сохраняет все строки
+SELECT 
+    name,
+    department,
+    salary,
+    AVG(salary) OVER (PARTITION BY department) as dept_avg_salary
+FROM employees;
+-- Результат: 100 строк (все сотрудники с добавленным средним по отделу)
+```
+
+### Базовый синтаксис
+
+```sql
+function_name([arguments]) OVER (
+    [PARTITION BY partition_expression]
+    [ORDER BY sort_expression [ASC | DESC]]
+    [frame_clause]
+)
+```
+
+**Компоненты:**
+- **function_name** — оконная или агрегатная функция
+- **PARTITION BY** — разделяет данные на группы (опционально)
+- **ORDER BY** — определяет порядок строк в окне (опционально)
+- **frame_clause** — определяет рамки окна (опционально)
+
+## Подготовка тестовых данных
+
+Создадим реалистичную базу данных интернет-магазина для практики.
+
+```sql
+-- Создание базы данных
+CREATE DATABASE analytics_demo;
+
+-- Сотрудники
+CREATE TABLE employees (
+    employee_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    department VARCHAR(50) NOT NULL,
+    position VARCHAR(50),
+    salary NUMERIC(10, 2) NOT NULL,
+    hire_date DATE NOT NULL,
+    manager_id INTEGER REFERENCES employees(employee_id)
+);
+
+-- Продукты
+CREATE TABLE products (
+    product_id SERIAL PRIMARY KEY,
+    product_name VARCHAR(200) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    price NUMERIC(10, 2) NOT NULL,
+    cost NUMERIC(10, 2) NOT NULL,
+    launch_date DATE
+);
+
+-- Продажи
+CREATE TABLE sales (
+    sale_id SERIAL PRIMARY KEY,
+    product_id INTEGER REFERENCES products(product_id),
+    employee_id INTEGER REFERENCES employees(employee_id),
+    sale_date DATE NOT NULL,
+    quantity INTEGER NOT NULL,
+    unit_price NUMERIC(10, 2) NOT NULL,
+    discount_percent NUMERIC(5, 2) DEFAULT 0,
+    region VARCHAR(50)
+);
+
+-- Вставка тестовых данных
+INSERT INTO employees (name, department, position, salary, hire_date, manager_id) VALUES
+    ('Алексей Иванов', 'IT', 'Разработчик', 120000, '2020-01-15', NULL),
+    ('Мария Петрова', 'IT', 'Разработчик', 115000, '2020-03-20', 1),
+    ('Сергей Смирнов', 'IT', 'Junior разработчик', 80000, '2022-05-10', 1),
+    ('Елена Козлова', 'Sales', 'Менеджер по продажам', 95000, '2019-08-01', NULL),
+    ('Дмитрий Волков', 'Sales', 'Менеджер по продажам', 90000, '2020-11-15', 4),
+    ('Ольга Морозова', 'Sales', 'Junior менеджер', 65000, '2023-02-01', 4),
+    ('Иван Новиков', 'HR', 'HR специалист', 75000, '2021-04-10', NULL),
+    ('Анна Соколова', 'HR', 'Рекрутер', 70000, '2021-09-20', 7),
+    ('Петр Лебедев', 'Marketing', 'Маркетолог', 85000, '2020-06-15', NULL),
+    ('Наталья Павлова', 'Marketing', 'SMM специалист', 72000, '2022-01-10', 9);
+
+INSERT INTO products (product_name, category, price, cost, launch_date) VALUES
+    ('Ноутбук Pro 15', 'Электроника', 85000, 65000, '2023-01-10'),
+    ('Смартфон X12', 'Электроника', 45000, 32000, '2023-02-15'),
+    ('Наушники Premium', 'Аксессуары', 8000, 4500, '2023-03-01'),
+    ('Клавиатура механическая', 'Аксессуары', 5500, 3000, '2023-01-20'),
+    ('Мышь беспроводная', 'Аксессуары', 2500, 1200, '2023-02-01'),
+    ('Монитор 27"', 'Электроника', 35000, 25000, '2023-04-01'),
+    ('Планшет Tab 10', 'Электроника', 28000, 20000, '2023-05-15'),
+    ('Кабель USB-C', 'Аксессуары', 800, 300, '2023-01-05'),
+    ('Чехол для ноутбука', 'Аксессуары', 1500, 600, '2023-02-20'),
+    ('Веб-камера HD', 'Аксессуары', 4500, 2500, '2023-03-10');
+
+-- Генерация продаж за последние 6 месяцев
+INSERT INTO sales (product_id, employee_id, sale_date, quantity, unit_price, discount_percent, region)
+SELECT 
+    (random() * 9 + 1)::INTEGER,
+    (random() * 5 + 4)::INTEGER,  -- Только sales сотрудники (4-6)
+    CURRENT_DATE - (random() * 180)::INTEGER,
+    (random() * 5 + 1)::INTEGER,
+    p.price * (1 - random() * 0.2),  -- Цена с вариацией
+    (random() * 20)::NUMERIC(5,2),
+    CASE (random() * 3)::INTEGER
+        WHEN 0 THEN 'Москва'
+        WHEN 1 THEN 'Санкт-Петербург'
+        WHEN 2 THEN 'Екатеринбург'
+        ELSE 'Казань'
+    END
+FROM generate_series(1, 200) AS gs
+CROSS JOIN products p
+WHERE p.product_id = (random() * 9 + 1)::INTEGER
+LIMIT 200;
+
+-- Создание индексов
+CREATE INDEX idx_sales_date ON sales(sale_date);
+CREATE INDEX idx_sales_product ON sales(product_id);
+CREATE INDEX idx_sales_employee ON sales(employee_id);
+```
+
+## Функции ранжирования
+
+### ROW_NUMBER() — Последовательная нумерация
+
+`ROW_NUMBER()` присваивает уникальный номер каждой строке в окне.
+
+```sql
+-- Простая нумерация всех сотрудников
+SELECT 
+    ROW_NUMBER() OVER (ORDER BY salary DESC) AS rank,
+    name,
+    department,
+    salary
+FROM employees
+ORDER BY rank;
+
+-- Нумерация внутри каждого отдела
+SELECT 
+    department,
+    name,
+    salary,
+    ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC) AS dept_rank
+FROM employees
+ORDER BY department, dept_rank;
+
+-- Практическое применение: пагинация
+SELECT 
+    ROW_NUMBER() OVER (ORDER BY sale_date DESC) AS row_num,
+    sale_id,
+    sale_date,
+    quantity * unit_price AS total
+FROM sales
+WHERE ROW_NUMBER() OVER (ORDER BY sale_date DESC) BETWEEN 11 AND 20;
+
+-- Правильная пагинация (с подзапросом)
+SELECT * FROM (
+    SELECT 
+        ROW_NUMBER() OVER (ORDER BY sale_date DESC) AS row_num,
+        sale_id,
+        sale_date,
+        quantity * unit_price AS total
+    FROM sales
+) AS numbered
+WHERE row_num BETWEEN 11 AND 20;
+```
+
+:::tip Когда использовать ROW_NUMBER
+- Нужна **уникальная нумерация** каждой строки
+- Реализация **пагинации**
+- Выбор **первых N записей** в каждой группе
+- Дедупликация данных
+:::
+
+### RANK() — Ранжирование с пропусками
+
+`RANK()` присваивает ранг с пропусками при одинаковых значениях.
+
+```sql
+-- Базовое ранжирование
+SELECT 
+    name,
+    department,
+    salary,
+    RANK() OVER (ORDER BY salary DESC) AS salary_rank
+FROM employees
+ORDER BY salary_rank;
+
+-- Ранжирование внутри отделов
+SELECT 
+    department,
+    name,
+    salary,
+    RANK() OVER (PARTITION BY department ORDER BY salary DESC) AS dept_rank
+FROM employees
+ORDER BY department, dept_rank;
+
+-- Сравнение ROW_NUMBER и RANK
+SELECT 
+    name,
+    salary,
+    ROW_NUMBER() OVER (ORDER BY salary DESC) AS row_num,
+    RANK() OVER (ORDER BY salary DESC) AS rank_num
+FROM employees
+ORDER BY salary DESC;
+/*
+Если два сотрудника имеют зарплату 90000:
+ROW_NUMBER: 4, 5 (уникальные номера)
+RANK: 4, 4 (одинаковый ранг, следующий будет 6)
+*/
+
+-- Топ-3 продукта в каждой категории по продажам
+WITH product_sales AS (
+    SELECT 
+        p.product_id,
+        p.product_name,
+        p.category,
+        SUM(s.quantity * s.unit_price) AS total_revenue,
+        COUNT(*) AS sales_count
+    FROM products p
+    LEFT JOIN sales s ON p.product_id = s.product_id
+    GROUP BY p.product_id, p.product_name, p.category
+)
+SELECT 
+    category,
+    product_name,
+    total_revenue,
+    sales_count,
+    RANK() OVER (PARTITION BY category ORDER BY total_revenue DESC) AS category_rank
+FROM product_sales
+WHERE RANK() OVER (PARTITION BY category ORDER BY total_revenue DESC) <= 3
+ORDER BY category, category_rank;
+```
+
+### DENSE_RANK() — Ранжирование без пропусков
+
+`DENSE_RANK()` присваивает ранг без пропусков при одинаковых значениях.
+
+```sql
+-- Сравнение всех трех функций ранжирования
+SELECT 
+    name,
+    salary,
+    ROW_NUMBER() OVER (ORDER BY salary DESC) AS row_number,
+    RANK() OVER (ORDER BY salary DESC) AS rank,
+    DENSE_RANK() OVER (ORDER BY salary DESC) AS dense_rank
+FROM employees
+ORDER BY salary DESC;
+
+/*
+Пример результата:
+name            salary   row_number  rank  dense_rank
+Алексей Иванов  120000   1          1     1
+Мария Петрова   115000   2          2     2
+Елена Козлова   95000    3          3     3
+Дмитрий Волков  90000    4          4     4
+Дмитрий Волков  90000    5          4     4  <- RANK пропускает 5
+Петр Лебедев    85000    6          6     5  <- DENSE_RANK не пропускает
+*/
+
+-- Определение категории зарплаты
+SELECT 
+    name,
+    department,
+    salary,
+    DENSE_RANK() OVER (ORDER BY salary DESC) AS salary_tier,
+    CASE 
+        WHEN DENSE_RANK() OVER (ORDER BY salary DESC) <= 3 THEN 'Высокая'
+        WHEN DENSE_RANK() OVER (ORDER BY salary DESC) <= 6 THEN 'Средняя'
+        ELSE 'Низкая'
+    END AS salary_category
+FROM employees
+ORDER BY salary DESC;
+
+-- Медальный рейтинг продавцов
+WITH monthly_sales AS (
+    SELECT 
+        e.employee_id,
+        e.name,
+        DATE_TRUNC('month', s.sale_date) AS month,
+        SUM(s.quantity * s.unit_price) AS total_revenue
+    FROM employees e
+    JOIN sales s ON e.employee_id = s.employee_id
+    WHERE e.department = 'Sales'
+    GROUP BY e.employee_id, e.name, DATE_TRUNC('month', s.sale_date)
+)
+SELECT 
+    month,
+    name,
+    total_revenue,
+    DENSE_RANK() OVER (PARTITION BY month ORDER BY total_revenue DESC) AS rank,
+    CASE DENSE_RANK() OVER (PARTITION BY month ORDER BY total_revenue DESC)
+        WHEN 1 THEN '🥇 Золото'
+        WHEN 2 THEN '🥈 Серебро'
+        WHEN 3 THEN '🥉 Бронза'
+        ELSE '   -'
+    END AS medal
+FROM monthly_sales
+ORDER BY month DESC, rank;
+```
+
+:::info Разница между RANK и DENSE_RANK
+- **RANK()**: 1, 2, 2, **4**, 5 (пропускает 3)
+- **DENSE_RANK()**: 1, 2, 2, **3**, 4 (не пропускает)
+
+Используйте DENSE_RANK когда нужна непрерывная нумерация уровней.
+:::
+
+### NTILE() — Разделение на группы
+
+`NTILE(n)` делит строки на n приблизительно равных групп.
+
+```sql
+-- Разделить сотрудников на 4 квартиля по зарплате
+SELECT 
+    name,
+    department,
+    salary,
+    NTILE(4) OVER (ORDER BY salary DESC) AS salary_quartile,
+    CASE NTILE(4) OVER (ORDER BY salary DESC)
+        WHEN 1 THEN 'Топ 25%'
+        WHEN 2 THEN '25-50%'
+        WHEN 3 THEN '50-75%'
+        WHEN 4 THEN 'Низшие 25%'
+    END AS quartile_label
+FROM employees
+ORDER BY salary DESC;
+
+-- ABC анализ продуктов (по принципу Парето)
+WITH product_revenue AS (
+    SELECT 
+        p.product_id,
+        p.product_name,
+        SUM(s.quantity * s.unit_price) AS total_revenue,
+        SUM(s.quantity) AS total_quantity
+    FROM products p
+    LEFT JOIN sales s ON p.product_id = s.product_id
+    GROUP BY p.product_id, p.product_name
+)
+SELECT 
+    product_name,
+    total_revenue,
+    total_quantity,
+    NTILE(3) OVER (ORDER BY total_revenue DESC) AS revenue_tier,
+    CASE NTILE(3) OVER (ORDER BY total_revenue DESC)
+        WHEN 1 THEN 'A - Ключевые (топ 33%)'
+        WHEN 2 THEN 'B - Важные (средние 33%)'
+        WHEN 3 THEN 'C - Прочие (нижние 33%)'
+    END AS abc_category
+FROM product_revenue
+ORDER BY total_revenue DESC;
+
+-- Разделение продаж по временным периодам на группы
+SELECT 
+    sale_date,
+    sale_id,
+    quantity * unit_price AS revenue,
+    NTILE(10) OVER (ORDER BY sale_date) AS time_decile
+FROM sales
+ORDER BY sale_date;
+
+-- Создание сбалансированных команд
+SELECT 
+    name,
+    salary,
+    NTILE(3) OVER (PARTITION BY department ORDER BY salary DESC) AS team_number
+FROM employees
+ORDER BY department, team_number;
+```
+
+## Функции смещения (Offset Functions)
+
+### LAG() — Предыдущее значение
+
+`LAG()` возвращает значение из предыдущей строки в окне.
+
+```sql
+-- Базовое использование LAG
+SELECT 
+    sale_date,
+    SUM(quantity * unit_price) AS daily_revenue,
+    LAG(SUM(quantity * unit_price)) OVER (ORDER BY sale_date) AS prev_day_revenue
+FROM sales
+GROUP BY sale_date
+ORDER BY sale_date;
+
+-- Расчет изменения относительно предыдущего дня
+SELECT 
+    sale_date,
+    daily_revenue,
+    prev_day_revenue,
+    daily_revenue - prev_day_revenue AS revenue_change,
+    ROUND(
+        (daily_revenue - prev_day_revenue) / NULLIF(prev_day_revenue, 0) * 100,
+        2
+    ) AS percent_change
+FROM (
+    SELECT 
+        sale_date,
+        SUM(quantity * unit_price) AS daily_revenue,
+        LAG(SUM(quantity * unit_price)) OVER (ORDER BY sale_date) AS prev_day_revenue
+    FROM sales
+    GROUP BY sale_date
+) AS daily_stats
+ORDER BY sale_date DESC
+LIMIT 30;
+
+-- LAG с PARTITION BY — предыдущая продажа каждого продукта
+SELECT 
+    p.product_name,
+    s.sale_date,
+    s.quantity * s.unit_price AS revenue,
+    LAG(s.sale_date) OVER (PARTITION BY s.product_id ORDER BY s.sale_date) AS prev_sale_date,
+    LAG(s.quantity * s.unit_price) OVER (PARTITION BY s.product_id ORDER BY s.sale_date) AS prev_revenue,
+    s.sale_date - LAG(s.sale_date) OVER (PARTITION BY s.product_id ORDER BY s.sale_date) AS days_since_last_sale
+FROM sales s
+JOIN products p ON s.product_id = p.product_id
+ORDER BY p.product_name, s.sale_date DESC;
+
+-- LAG с offset и default значением
+SELECT 
+    name,
+    hire_date,
+    salary,
+    -- Предыдущая зарплата (offset = 1, default = 0)
+    LAG(salary, 1, 0) OVER (PARTITION BY department ORDER BY hire_date) AS prev_salary,
+    -- Зарплата 2 найма назад (offset = 2)
+    LAG(salary, 2) OVER (PARTITION BY department ORDER BY hire_date) AS salary_2_hires_ago
+FROM employees
+ORDER BY department, hire_date;
+```
+
+### LEAD() — Следующее значение
+
+`LEAD()` возвращает значение из следующей строки в окне.
+
+```sql
+-- Прогноз: сравнение с будущими значениями
+SELECT 
+    sale_date,
+    daily_revenue,
+    LEAD(daily_revenue) OVER (ORDER BY sale_date) AS next_day_revenue,
+    LEAD(daily_revenue, 7) OVER (ORDER BY sale_date) AS same_day_next_week
+FROM (
+    SELECT 
+        sale_date,
+        SUM(quantity * unit_price) AS daily_revenue
+    FROM sales
+    GROUP BY sale_date
+) AS daily
+ORDER BY sale_date;
+
+-- Определение тренда (растет/падает)
+SELECT 
+    sale_date,
+    daily_revenue,
+    LAG(daily_revenue) OVER (ORDER BY sale_date) AS yesterday,
+    LEAD(daily_revenue) OVER (ORDER BY sale_date) AS tomorrow,
+    CASE 
+        WHEN daily_revenue > LAG(daily_revenue) OVER (ORDER BY sale_date)
+         AND daily_revenue > LEAD(daily_revenue) OVER (ORDER BY sale_date) 
+        THEN 'Пик'
+        WHEN daily_revenue < LAG(daily_revenue) OVER (ORDER BY sale_date)
+         AND daily_revenue < LEAD(daily_revenue) OVER (ORDER BY sale_date)
+        THEN 'Спад'
+        WHEN daily_revenue > LAG(daily_revenue) OVER (ORDER BY sale_date) 
+        THEN 'Рост'
+        WHEN daily_revenue < LAG(daily_revenue) OVER (ORDER BY sale_date)
+        THEN 'Снижение'
+        ELSE 'Стабильно'
+    END AS trend
+FROM (
+    SELECT 
+        sale_date,
+        SUM(quantity * unit_price) AS daily_revenue
+    FROM sales
+    GROUP BY sale_date
+) AS daily
+ORDER BY sale_date DESC;
+
+-- Расчет времени между событиями
+SELECT 
+    employee_id,
+    sale_date,
+    LEAD(sale_date) OVER (PARTITION BY employee_id ORDER BY sale_date) AS next_sale_date,
+    LEAD(sale_date) OVER (PARTITION BY employee_id ORDER BY sale_date) - sale_date AS days_to_next_sale,
+    AVG(LEAD(sale_date) OVER (PARTITION BY employee_id ORDER BY sale_date) - sale_date) 
+        OVER (PARTITION BY employee_id) AS avg_days_between_sales
+FROM sales
+ORDER BY employee_id, sale_date;
+```
+
+### FIRST_VALUE() и LAST_VALUE()
+
+```sql
+-- FIRST_VALUE — первое значение в окне
+SELECT 
+    name,
+    department,
+    salary,
+    FIRST_VALUE(name) OVER (
+        PARTITION BY department 
+        ORDER BY salary DESC
+    ) AS highest_paid_in_dept,
+    FIRST_VALUE(salary) OVER (
+        PARTITION BY department 
+        ORDER BY salary DESC
+    ) AS top_salary_in_dept,
+    salary - FIRST_VALUE(salary) OVER (
+        PARTITION BY department 
+        ORDER BY salary DESC
+    ) AS salary_gap
+FROM employees
+ORDER BY department, salary DESC;
+
+-- LAST_VALUE — последнее значение (требует frame clause!)
+SELECT 
+    name,
+    department,
+    hire_date,
+    LAST_VALUE(name) OVER (
+        PARTITION BY department 
+        ORDER BY hire_date
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS newest_hire_in_dept
+FROM employees
+ORDER BY department, hire_date;
+
+-- Сравнение с первой и последней продажей
+SELECT 
+    p.product_name,
+    s.sale_date,
+    s.quantity * s.unit_price AS revenue,
+    FIRST_VALUE(s.sale_date) OVER (
+        PARTITION BY s.product_id 
+        ORDER BY s.sale_date
+    ) AS first_sale_date,
+    LAST_VALUE(s.sale_date) OVER (
+        PARTITION BY s.product_id 
+        ORDER BY s.sale_date
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS last_sale_date
+FROM sales s
+JOIN products p ON s.product_id = p.product_id
+ORDER BY p.product_name, s.sale_date;
+
+-- Динамика цены: сравнение с первоначальной ценой
+SELECT 
+    product_id,
+    sale_date,
+    unit_price,
+    FIRST_VALUE(unit_price) OVER (
+        PARTITION BY product_id 
+        ORDER BY sale_date
+    ) AS initial_price,
+    ROUND(
+        (unit_price - FIRST_VALUE(unit_price) OVER (
+            PARTITION BY product_id 
+            ORDER BY sale_date
+        )) / FIRST_VALUE(unit_price) OVER (
+            PARTITION BY product_id 
+            ORDER BY sale_date
+        ) * 100,
+        2
+    ) AS price_change_percent
+FROM sales
+ORDER BY product_id, sale_date;
+```
+
+:::warning LAST_VALUE и Frame Clause
+По умолчанию `LAST_VALUE` использует frame `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, что означает "от начала до текущей строки". Чтобы получить действительно последнее значение во всем окне, используйте:
+```sql
+ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+```
+:::
+
+### NTH_VALUE() — N-ое значение
+
+```sql
+-- Получить 2-ую самую высокую зарплату в каждом отделе
+SELECT DISTINCT
+    department,
+    NTH_VALUE(salary, 1) OVER (
+        PARTITION BY department 
+        ORDER BY salary DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS highest_salary,
+    NTH_VALUE(salary, 2) OVER (
+        PARTITION BY department 
+        ORDER BY salary DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS second_highest_salary,
+    NTH_VALUE(salary, 3) OVER (
+        PARTITION BY department 
+        ORDER BY salary DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS third_highest_salary
+FROM employees
+ORDER BY department;
+
+-- Медиана через NTH_VALUE
+WITH ranked AS (
+    SELECT 
+        department,
+        salary,
+        ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary) AS rn,
+        COUNT(*) OVER (PARTITION BY department) AS cnt
+    FROM employees
+)
+SELECT DISTINCT
+    department,
+    NTH_VALUE(salary, (cnt + 1) / 2) OVER (
+        PARTITION BY department 
+        ORDER BY salary
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS median_salary
+FROM ranked;
+```
+
+## Агрегатные функции как оконные
+
+### SUM() OVER — Накопительные итоги
+
+```sql
+-- Running Total (накопительная сумма)
+SELECT 
+    sale_date,
+    SUM(quantity * unit_price) AS daily_revenue,
+    SUM(SUM(quantity * unit_price)) OVER (
+        ORDER BY sale_date
+    ) AS cumulative_revenue
+FROM sales
+GROUP BY sale_date
+ORDER BY sale_date;
+
+-- Накопительная сумма по продуктам
+SELECT 
+    p.product_name,
+    s.sale_date,
+    s.quantity * s.unit_price AS sale_amount,
+    SUM(s.quantity * s.unit_price) OVER (
+        PARTITION BY s.product_id 
+        ORDER BY s.sale_date
+    ) AS product_cumulative_revenue
+FROM sales s
+JOIN products p ON s.product_id = p.product_id
+ORDER BY p.product_name, s.sale_date;
+
+-- Процент от накопительного итога
+WITH daily_sales AS (
+    SELECT 
+        sale_date,
+        SUM(quantity * unit_price) AS daily_revenue
+    FROM sales
+    GROUP BY sale_date
+),
+cumulative AS (
+    SELECT 
+        sale_date,
+        daily_revenue,
+        SUM(daily_revenue) OVER (ORDER BY sale_date) AS cumulative_revenue,
+        SUM(daily_revenue) OVER () AS total_revenue
+    FROM daily_sales
+)
+SELECT 
+    sale_date,
+    daily_revenue,
+    cumulative_revenue,
+    ROUND(cumulative_revenue / total_revenue * 100, 2) AS percent_of_total
+FROM cumulative
+ORDER BY sale_date;
+```
+
+### AVG() OVER — Скользящие средние
+
+```sql
+-- Простое скользящее среднее (Moving Average)
+SELECT 
+    sale_date,
+    daily_revenue,
+    -- Среднее за последние 7 дней
+    ROUND(AVG(daily_revenue) OVER (
+        ORDER BY sale_date
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ), 2) AS moving_avg_7d,
+    -- Среднее за последние 30 дней
+    ROUND(AVG(daily_revenue) OVER (
+        ORDER BY sale_date
+        ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
+    ), 2) AS moving_avg_30d
+FROM (
+    SELECT 
+        sale_date,
+        SUM(quantity * unit_price) AS daily_revenue
+    FROM sales
+    GROUP BY sale_date
+) AS daily
+ORDER BY sale_date DESC;
+
+-- Центрированное скользящее среднее
+SELECT 
+    sale_date,
+    daily_revenue,
+    ROUND(AVG(daily_revenue) OVER (
+        ORDER BY sale_date
+        ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING
+    ), 2) AS centered_moving_avg_7d
+FROM (
+    SELECT 
+        sale_date,
+        SUM(quantity * unit_price) AS daily_revenue
+    FROM sales
+    GROUP BY sale_date
+) AS daily
+ORDER BY sale_date;
+
+-- Экспоненциальное скользящее среднее (EMA) — приближенно
+WITH daily_revenue AS (
+    SELECT 
+        sale_date,
+        SUM(quantity * unit_price) AS revenue
+    FROM sales
+    GROUP BY sale_date
+    ORDER BY sale_date
+),
+ema_calc AS (
+    SELECT 
+        sale_date,
+        revenue,
+        ROW_NUMBER() OVER (ORDER BY sale_date) AS rn,
+        -- Простое среднее первых 10 дней как начальное EMA
+        CASE 
+            WHEN ROW_NUMBER() OVER (ORDER BY sale_date) <= 10 
+            THEN AVG(revenue) OVER (
+                ORDER BY sale_date 
+                ROWS BETWEEN 9 PRECEDING AND CURRENT ROW
+            )
+            ELSE NULL
+        END AS initial_ema
+    FROM daily_revenue
+)

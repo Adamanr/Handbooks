@@ -182,19 +182,15 @@ const config: Config = {
           items: [
             {
               label: "Go",
-              to: "/go/category/basics",
+              to: "/go",
             },
             {
               label: "PostgreSQL",
-              to: "/postgresql/category/postgresql-основы",
-            },
-            {
-              label: "Elixir",
-              to: "/elixir/category/elixir-основы",
+              to: "/postgresql/advanced",
             },
             {
               label: "Контейнеризация",
-              to: "/k8s/into",
+              to: "/k8s/docker",
             },
           ],
         },
@@ -216,15 +212,6 @@ const config: Config = {
             {
               label: "Telegram автора",
               href: "https://t.me/adamanq",
-            },
-          ],
-        },
-        {
-          title: "Дополнительные ссылки",
-          items: [
-            {
-              label: "Блог ",
-              to: "/blog",
             },
           ],
         },
