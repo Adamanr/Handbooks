@@ -68,7 +68,7 @@ export const CodeBlockGo = ({ children }) => {
   );
 };
 
-export const CodeBlockGoPostgres = ({ children }) => {
+export const CodeBlockPostgres = ({ children }) => {
   return (
     <div>
       <br />

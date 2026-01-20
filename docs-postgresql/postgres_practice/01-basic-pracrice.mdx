@@ -1,0 +1,197 @@
+---
+sidebar_position: 1
+description: "Практические задания по основам SQL в PostgreSQL: DDL (CREATE TABLE, CONSTRAINTS), DML (INSERT), первичные и внешние ключи, связи один-ко-многим и многие-ко-многим."
+---
+
+# Практика: Основы SQL — DDL и DML
+
+import { RandomVariantButton, TaskWithVariants } from "../../src/components/practicModules/practic";
+
+Практические задания по созданию таблиц, определению связей, ограничений и вставке данных в PostgreSQL.  
+
+**Темы:** CREATE TABLE, PRIMARY KEY, FOREIGN KEY, NOT NULL, UNIQUE, CHECK, DEFAULT, ON DELETE, INSERT.
+
+
+## Задание 1: Простая таблица пользователей
+<TaskWithVariants
+  title="Задание 1: Таблица пользователей"
+  description="Создайте таблицу users для проекта из вашего варианта с основными полями и ограничениями."
+  variants={[
+    <><p>Обычный интернет-магазин</p></>,
+    <><p>Блоговая платформа</p></>,
+    <><p>Система бронирования</p></>,
+    <><p>Форум / сообщество</p></>,
+  ]}
+>
+  <details>
+      <summary>❗️ Требования</summary>
+      <ul>
+        <li><code>user_id SERIAL PRIMARY KEY</code></li>
+        <li><code>username VARCHAR(50) NOT NULL UNIQUE</code></li>
+        <li><code>email VARCHAR(120) NOT NULL UNIQUE</code></li>
+        <li><code>created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP</code></li>
+        <li><code>is_active BOOLEAN DEFAULT TRUE</code></li>
+        <li>+ Опциональные поля по вашему варианту</li>
+        <li>Вставьте 3 записи</li>
+      </ul>
+  </details>
+  <details>
+      <summary>💡 Подсказка</summary>
+      <p>UNIQUE защитит от дубликатов username и email</p>
+  </details>
+</TaskWithVariants>
+
+## Задание 2: Таблица категорий + товары (один-ко-многим)
+<TaskWithVariants
+  title="Задание 2: Категории и товары"
+  description="Создайте две таблицы и свяжите их внешним ключом."
+  variants={[
+    <><p>Электроника → смартфоны, ноутбуки, наушники</p></>,
+    <><p>Одежда → мужская, женская, детская</p></>,
+    <><p>Книги → фантастика, детективы, non-fiction</p></>,
+    <><p>Мебель → диваны, столы, стулья</p></>,
+  ]}
+>
+  <details>
+      <summary>❗️ Требования</summary>
+      <ul>
+        <li><code>categories</code>: `category_id SERIAL PRIMARY KEY, name VARCHAR(80) NOT NULL UNIQUE`</li>
+        <li><code>products</code>: `product_id SERIAL PRIMARY KEY, name VARCHAR(150) NOT NULL, category_id INTEGER NOT NULL`</li>
+        <li>`FOREIGN KEY (category_id) REFERENCES categories(category_id) ON DELETE RESTRICT`</li>
+        <li>Вставьте 2 категории и по 2–3 товара в каждую</li>
+        <li>Попробуйте удалить категорию, к которой привязаны товары → должна быть ошибка</li>
+      </ul>
+  </details>
+</TaskWithVariants>
+
+## Задание 3: Заказы + позиции заказа (многие-ко-многим через промежуточную таблицу)
+<TaskWithVariants
+  title="Задание 3: Заказы и товары в заказе"
+  description="Реализуйте связь многие-ко-многим."
+  variants={[
+    <><p>Интернет-магазин</p></>,
+    <><p>Кафе / доставка еды</p></>,
+    <><p>Билеты на мероприятия</p></>,
+  ]}
+>
+  <details>
+      <summary>❗️ Требования</summary>
+      <ul>
+        <li>
+            <code>orders</code>: `order_id SERIAL PRIMARY KEY, customer_id INTEGER NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW()`
+        </li>
+        <li>
+            <code>order_items</code>: 
+            <ul>
+                <li>`order_id INTEGER NOT NULL`</li>
+                <li>`product_id INTEGER NOT NULL`</li>
+                <li>`quantity INTEGER NOT NULL CHECK (quantity > 0)`</li>
+                <li>`PRIMARY KEY (order_id, product_id)`</li>
+                <li>`FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE`</li>
+                <li>`FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE RESTRICT`</li>
+            </ul>
+        </li>
+        <li>Вставьте 2 заказа, в каждый по 2–4 позиции</li>
+      </ul>
+  </details>
+</TaskWithVariants>
+
+## Задание 4: CHECK + DEFAULT в разных вариантах
+<TaskWithVariants
+  title="Задание 4: Ограничения CHECK и DEFAULT"
+  description="Добавьте бизнес-правила к 3-му заданию через CHECK и DEFAULT."
+  variants={[
+    <><p>Статус заказа: new, paid, shipped, delivered, cancelled</p></>,
+    <><p>Возраст сотрудника ≥ 18</p></>,
+    <><p>Скидка от 0 до 90%</p></>,
+    <><p>Рейтинг товара от 1 до 5</p></>,
+  ]}
+>
+  <details>
+      <summary>❗️ Требования</summary>
+      <ul>
+        <li>
+            Создайте таблицу с полем, на которое нужно наложить CHECK
+        </li>
+        <li>
+            Примеры:
+            <ul>
+                <li>status VARCHAR(20) DEFAULT 'new' CHECK (status IN ('new','paid','shipped','delivered','cancelled'))</li>
+                <li>age SMALLINT CHECK (age >= 18)</li>
+                <li>ёdiscount NUMERIC(4,2) CHECK (discount &lt;= 0 AND discount &gt;= 90)`</li>
+            </ul>
+        </li>
+        <li>Попробуйте вставить некорректное значение → изучите сообщение об ошибке</li>
+      </ul>
+  </details>
+</TaskWithVariants>
+
+## Задание 5: Каскадные действия FOREIGN KEY
+<TaskWithVariants
+  title="Задание 5: Разные стратегии удаления"
+  description="Сравните поведение CASCADE, SET NULL, RESTRICT."
+  variants={[
+    <><p>Автор → книги (CASCADE)</p></>,
+    <><p>Сотрудник → задачи (SET NULL)</p></>,
+    <><p>Клиент → заказы (RESTRICT)</p></>,
+  ]}
+>
+  <details>
+      <summary>❗️ Требования</summary>
+      <ul>
+        <li>Создайте две связанные таблицы</li>
+        <li>Используйте разные ON DELETE стратегии</li>
+        <li>Вставьте данные</li>
+        <li>Удалите родительскую запись и посмотрите, что произошло с дочерними</li>
+      </ul>
+  </details>
+  <details>
+      <summary>💡 Подсказка</summary>
+      <p>ON DELETE CASCADE — удаляет зависимые записи `ON DELETE SET NULL` — обнуляет внешний ключ `ON DELETE RESTRICT` — запрещает удаление</p>
+  </details>
+</TaskWithVariants>
+
+## Задание 6: Мини-магазин — всё вместе
+<TaskWithVariants
+  title="Задание 6: Полная структура мини-магазина"
+  description="Создайте 4–5 таблиц с правильными связями."
+  variants={[
+    <><p>Магазин электроники</p></>,
+    <><p>Интернет-магазин одежды</p></>,
+    <><p>Книжный магазин</p></>,
+  ]}
+>
+  <details>
+      <summary>❗️ Рекомендуемая структура</summary>
+      <ul>
+        <li>users (user_id, username, email, created_at)</li>
+        <li>categories (category_id, name)</li>
+        <li>products (product_id, name, price, category_id)</li>
+        <li>orders (order_id, user_id, created_at, status)</li>
+        <li>order_items (order_id, product_id, quantity, price_at_purchase)</li>
+      </ul>
+  </details>
+  <details>
+      <summary>❗️ Требования</summary>
+      <ul>
+        <li>PRIMARY KEY и FOREIGN KEY везде, где нужны</li>
+        <li>NOT NULL где логично</li>
+        <li>CHECK на положительную цену, количество > 0</li>
+        <li>DEFAULT для дат и статусов</li>
+        <li>ON DELETE CASCADE на order_items → orders</li>
+        <li>Вставьте хотя бы 2–3 записи в каждую таблицу</li>
+      </ul>
+  </details>
+
+</TaskWithVariants>
+
+## Дополнительные материалы
+После выполнения заданий:
+- Попробуйте нарушить ограничения и внимательно прочитайте сообщения об ошибках
+- Поэкспериментируйте с ON DELETE CASCADE / RESTRICT / SET NULL
+- Создайте копию таблицы через CREATE TABLE ... LIKE ...
+- Используйте \d и \dt в psql для просмотра структуры
+
+:::tip Совет
+Ошибки нарушения constraint'ов — ваши лучшие учителя. Читайте их внимательно!
+:::

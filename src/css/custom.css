@@ -166,6 +166,7 @@ h2:hover::before {
 
 /* Enhanced Images */
 .markdown img {
+    width: 100%;
     border-radius: 12px;
     box-shadow: var(--shadow-lg);
     transition:

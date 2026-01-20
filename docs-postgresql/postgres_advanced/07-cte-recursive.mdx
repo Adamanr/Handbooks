@@ -7,8 +7,6 @@ description: "Полное руководство по работе с CTE и Р
 keywords: [postgresql, cte, recursive]
 ---
 
-import { CodeBlockGoPostgres } from "../../src/components/practicModules/practic";
-
 # CTE (Common Table Expressions) и рекурсивные запросы
 
 ## Введение
@@ -54,7 +52,6 @@ SELECT ... FROM cte3;
 ```sql
 -- Создание базы данных
 CREATE DATABASE company_analytics;
-\c company_analytics
 
 -- Сотрудники (иерархическая структура)
 CREATE TABLE employees (
