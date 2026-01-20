@@ -217,3 +217,8 @@ articles:
   label: Статьи
   permalink: /articles
   description: Мои статьи и обзоры по разработке и технологиям.
+
+linux:
+  label: Linux
+  permalink: /linux
+  description: Настройка и использование операционной системы Linux. Управление сетью, файловой системой и другими аспектами работы с Linux.

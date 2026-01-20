@@ -3,7 +3,7 @@ slug: linux-debian-network
 title: Настройка системы маршрутизации на сервере Linux Debian
 description: Настройка маршрутизации на сервере Linux Debian
 authors: [adaman]
-tags: [linux, debian, network]
+tags: [linux]
 ---
 
 ![Debian](/img/debian.jpg)
