@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 title: "Типы данных"
 description: "В этой главе мы рассмотрим основы PostgreSQL, включая установку, настройку и базовые команды."
 ---
@@ -740,14 +740,3 @@ SELECT
     upper(stay_period) - lower(stay_period) AS nights,
     isempty(stay_period) AS is_empty
 FROM room_bookings;
-
--- Предотвращение пересекающихся бронирований
-CREATE EXTENSION IF NOT EXISTS btree_gist;
-
-ALTER TABLE room_bookings 
-ADD CONSTRAINT no_overlapping_bookings 
-EXCLUDE USING GIST (room_number WITH =, stay_period WITH &&);
-
--- Попытка добавить пересекающееся бронирование вызовет ошибку
--- INSERT INTO room_bookings (room_number, guest_name, stay_period)
--- VALUES (101, 'Сидор

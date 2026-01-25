@@ -1,0 +1,1634 @@
+---
+id: module-12-optimization
+title: "Оптимизация запросов"
+sidebar_label: "Оптимизация запросов"
+sidebar_position: 12
+description: "Полное руководство по оптимизации запросов в PostgreSQL"
+keywords: [postgresql, optimization]
+---
+
+# Оптимизация запросов в PostgreSQL: стратегии и лучшие практики
+
+## Введение
+
+Оптимизация запросов — это искусство и наука одновременно. Даже хорошо спроектированная база данных может работать медленно из-за неоптимальных запросов. В этом уроке мы рассмотрим проверенные стратегии, лучшие практики и типичные ошибки при написании SQL-запросов в PostgreSQL.
+
+:::tip Философия оптимизации
+Сначала измеряйте, потом оптимизируйте. Используйте EXPLAIN ANALYZE для понимания реального поведения запросов, а не полагайтесь на интуицию.
+:::
+
+## Подготовка тестового окружения
+
+Создадим реалистичную базу данных для демонстрации техник оптимизации.
+
+```sql
+-- Создание таблиц
+CREATE TABLE customers (
+    id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50),
+    last_name VARCHAR(50),
+    email VARCHAR(100) UNIQUE,
+    phone VARCHAR(20),
+    country VARCHAR(50),
+    city VARCHAR(50),
+    registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT true,
+    customer_segment VARCHAR(20)
+);
+
+CREATE TABLE products (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200),
+    category VARCHAR(50),
+    subcategory VARCHAR(50),
+    price NUMERIC(10, 2),
+    cost NUMERIC(10, 2),
+    stock_quantity INTEGER,
+    supplier_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE orders (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER REFERENCES customers(id),
+    order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ship_date TIMESTAMP,
+    status VARCHAR(20),
+    total_amount NUMERIC(12, 2),
+    shipping_cost NUMERIC(8, 2),
+    discount_amount NUMERIC(8, 2),
+    payment_method VARCHAR(20)
+);
+
+CREATE TABLE order_items (
+    id SERIAL PRIMARY KEY,
+    order_id INTEGER REFERENCES orders(id),
+    product_id INTEGER REFERENCES products(id),
+    quantity INTEGER,
+    unit_price NUMERIC(10, 2),
+    discount_percent NUMERIC(5, 2)
+);
+
+CREATE TABLE reviews (
+    id SERIAL PRIMARY KEY,
+    product_id INTEGER REFERENCES products(id),
+    customer_id INTEGER REFERENCES customers(id),
+    rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+    review_text TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    helpful_count INTEGER DEFAULT 0
+);
+
+-- Заполнение тестовыми данными
+INSERT INTO customers (first_name, last_name, email, phone, country, city, customer_segment, is_active)
+SELECT 
+    'FirstName' || i,
+    'LastName' || i,
+    'customer' || i || '@example.com',
+    '+1234567' || LPAD(i::TEXT, 4, '0'),
+    CASE (i % 10)
+        WHEN 0 THEN 'USA'
+        WHEN 1 THEN 'UK'
+        WHEN 2 THEN 'Germany'
+        WHEN 3 THEN 'France'
+        WHEN 4 THEN 'Canada'
+        WHEN 5 THEN 'Australia'
+        WHEN 6 THEN 'Japan'
+        WHEN 7 THEN 'Brazil'
+        WHEN 8 THEN 'India'
+        ELSE 'Russia'
+    END,
+    'City' || (i % 100),
+    CASE (i % 3)
+        WHEN 0 THEN 'Premium'
+        WHEN 1 THEN 'Standard'
+        ELSE 'Basic'
+    END,
+    random() > 0.05
+FROM generate_series(1, 200000) AS i;
+
+INSERT INTO products (name, category, subcategory, price, cost, stock_quantity, supplier_id)
+SELECT 
+    'Product ' || i,
+    CASE (i % 8)
+        WHEN 0 THEN 'Electronics'
+        WHEN 1 THEN 'Clothing'
+        WHEN 2 THEN 'Books'
+        WHEN 3 THEN 'Home & Garden'
+        WHEN 4 THEN 'Sports'
+        WHEN 5 THEN 'Toys'
+        WHEN 6 THEN 'Food'
+        ELSE 'Health'
+    END,
+    'Subcategory' || (i % 20),
+    (random() * 1000 + 10)::NUMERIC(10, 2),
+    (random() * 500 + 5)::NUMERIC(10, 2),
+    (random() * 1000)::INTEGER,
+    (random() * 100 + 1)::INTEGER
+FROM generate_series(1, 50000) AS i;
+
+INSERT INTO orders (customer_id, order_date, ship_date, status, total_amount, shipping_cost, discount_amount, payment_method)
+SELECT 
+    (random() * 199999 + 1)::INTEGER,
+    CURRENT_TIMESTAMP - (random() * interval '730 days'),
+    CURRENT_TIMESTAMP - (random() * interval '720 days'),
+    CASE (random() * 5)::INTEGER
+        WHEN 0 THEN 'pending'
+        WHEN 1 THEN 'processing'
+        WHEN 2 THEN 'shipped'
+        WHEN 3 THEN 'delivered'
+        ELSE 'cancelled'
+    END,
+    (random() * 5000 + 50)::NUMERIC(12, 2),
+    (random() * 50 + 5)::NUMERIC(8, 2),
+    (random() * 200)::NUMERIC(8, 2),
+    CASE (random() * 3)::INTEGER
+        WHEN 0 THEN 'credit_card'
+        WHEN 1 THEN 'paypal'
+        ELSE 'bank_transfer'
+    END
+FROM generate_series(1, 800000);
+
+INSERT INTO order_items (order_id, product_id, quantity, unit_price, discount_percent)
+SELECT 
+    (random() * 799999 + 1)::INTEGER,
+    (random() * 49999 + 1)::INTEGER,
+    (random() * 5 + 1)::INTEGER,
+    (random() * 500 + 10)::NUMERIC(10, 2),
+    (random() * 30)::NUMERIC(5, 2)
+FROM generate_series(1, 2000000);
+
+INSERT INTO reviews (product_id, customer_id, rating, review_text, helpful_count)
+SELECT 
+    (random() * 49999 + 1)::INTEGER,
+    (random() * 199999 + 1)::INTEGER,
+    (random() * 4 + 1)::INTEGER,
+    'This is a review text for testing purposes. ' || 
+    'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+    (random() * 100)::INTEGER
+FROM generate_series(1, 300000);
+
+-- Создание базовых индексов
+CREATE INDEX idx_customers_country ON customers(country);
+CREATE INDEX idx_customers_email ON customers(email);
+CREATE INDEX idx_customers_segment ON customers(customer_segment);
+CREATE INDEX idx_products_category ON products(category);
+CREATE INDEX idx_products_price ON products(price);
+CREATE INDEX idx_orders_customer_id ON orders(customer_id);
+CREATE INDEX idx_orders_date ON orders(order_date);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX idx_order_items_product_id ON order_items(product_id);
+CREATE INDEX idx_reviews_product_id ON reviews(product_id);
+CREATE INDEX idx_reviews_customer_id ON reviews(customer_id);
+
+-- Обновление статистики
+ANALYZE customers;
+ANALYZE products;
+ANALYZE orders;
+ANALYZE order_items;
+ANALYZE reviews;
+```
+
+## Стратегия 1: Выбор правильных индексов
+
+### Проблема: отсутствие индексов
+
+```sql
+-- Плохо: медленный запрос без индекса
+EXPLAIN ANALYZE
+SELECT * FROM customers 
+WHERE phone = '+12345671234';
+
+-- Результат: Seq Scan (очень медленно на больших таблицах)
+```
+
+```
+Seq Scan on customers  (cost=0.00..5234.00 rows=1 width=67)
+                       (actual time=0.125..45.678 rows=1 loops=1)
+  Filter: ((phone)::text = '+12345671234'::text)
+  Rows Removed by Filter: 199999
+Planning Time: 0.089 ms
+Execution Time: 45.723 ms
+```
+
+### Решение: создание индекса
+
+```sql
+-- Хорошо: создаем индекс
+CREATE INDEX idx_customers_phone ON customers(phone);
+
+EXPLAIN ANALYZE
+SELECT * FROM customers 
+WHERE phone = '+12345671234';
+```
+
+```
+Index Scan using idx_customers_phone on customers  
+    (cost=0.42..8.44 rows=1 width=67)
+    (actual time=0.023..0.024 rows=1 loops=1)
+  Index Cond: ((phone)::text = '+12345671234'::text)
+Planning Time: 0.112 ms
+Execution Time: 0.045 ms
+```
+
+:::tip Улучшение производительности
+Запрос ускорился с 45.7ms до 0.045ms — более чем в 1000 раз!
+:::
+
+### Составные индексы: порядок колонок важен
+
+```sql
+-- Неоптимально: неправильный порядок колонок
+CREATE INDEX idx_orders_bad ON orders(status, customer_id);
+
+-- Этот запрос использует индекс неэффективно
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+WHERE customer_id = 12345;
+
+-- Оптимально: правильный порядок
+CREATE INDEX idx_orders_good ON orders(customer_id, status);
+
+-- Теперь запрос работает быстро
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+WHERE customer_id = 12345;
+
+-- Этот запрос использует оба индекса эффективно
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+WHERE customer_id = 12345 AND status = 'delivered';
+```
+
+:::info Правило составных индексов
+Размещайте в индексе сначала колонки с высокой селективностью (много уникальных значений), затем с низкой. Индекс на (customer_id, status) работает для запросов по customer_id и по (customer_id, status), но не для запросов только по status.
+:::
+
+### Частичные индексы для специфичных запросов
+
+```sql
+-- Проблема: индексируем всю таблицу, хотя нужна только часть
+CREATE INDEX idx_orders_all ON orders(order_date);
+
+-- Решение: частичный индекс только для активных заказов
+CREATE INDEX idx_orders_active ON orders(order_date)
+WHERE status NOT IN ('cancelled', 'delivered');
+
+-- Использование
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+WHERE status = 'processing' 
+    AND order_date > CURRENT_DATE - interval '30 days';
+```
+
+Частичный индекс:
+- Занимает меньше места
+- Быстрее обновляется
+- Более эффективен для специфичных запросов
+
+### Индексы с включенными колонками (INCLUDE)
+
+```sql
+-- PostgreSQL 11+: индекс с включенными колонками
+CREATE INDEX idx_customers_country_include ON customers(country) 
+INCLUDE (first_name, last_name, email);
+
+-- Этот запрос теперь использует Index Only Scan
+EXPLAIN ANALYZE
+SELECT first_name, last_name, email 
+FROM customers 
+WHERE country = 'USA';
+```
+
+```
+Index Only Scan using idx_customers_country_include on customers  
+    (cost=0.42..234.56 rows=5000 width=45)
+    (actual time=0.045..5.678 rows=5000 loops=1)
+  Index Cond: (country = 'USA'::text)
+  Heap Fetches: 0
+```
+
+### Индексы для сортировки
+
+```sql
+-- Плохо: сортировка требует дополнительной операции
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+WHERE customer_id = 12345 
+ORDER BY order_date DESC 
+LIMIT 10;
+
+-- Создаем индекс, который поддерживает и фильтрацию, и сортировку
+CREATE INDEX idx_orders_customer_date ON orders(customer_id, order_date DESC);
+
+-- Теперь запрос использует индекс для обоих операций
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+WHERE customer_id = 12345 
+ORDER BY order_date DESC 
+LIMIT 10;
+```
+
+## Стратегия 2: Оптимизация JOIN операций
+
+### Проблема: декартово произведение
+
+```sql
+-- ОЧЕНЬ ПЛОХО: забыли условие JOIN
+EXPLAIN ANALYZE
+SELECT c.first_name, o.total_amount
+FROM customers c, orders o
+WHERE c.country = 'USA';
+
+-- Результат: возвращает миллионы строк!
+```
+
+### Решение: всегда указывайте условия JOIN
+
+```sql
+-- Хорошо: явное условие JOIN
+EXPLAIN ANALYZE
+SELECT c.first_name, o.total_amount
+FROM customers c
+INNER JOIN orders o ON c.id = o.customer_id
+WHERE c.country = 'USA';
+```
+
+### Оптимизация порядка JOIN
+
+```sql
+-- Пример: три таблицы с разным размером
+-- customers: 200,000 строк
+-- orders: 800,000 строк  
+-- order_items: 2,000,000 строк
+
+-- Неоптимально: начинаем с самой большой таблицы
+EXPLAIN ANALYZE
+SELECT oi.*, o.order_date, c.first_name
+FROM order_items oi
+JOIN orders o ON oi.order_id = o.id
+JOIN customers c ON o.customer_id = c.id
+WHERE c.country = 'USA' AND c.is_active = true;
+
+-- Оптимально: начинаем с фильтрации маленькой таблицы
+EXPLAIN ANALYZE
+SELECT oi.*, o.order_date, c.first_name
+FROM customers c
+JOIN orders o ON c.id = o.customer_id
+JOIN order_items oi ON o.id = oi.order_id
+WHERE c.country = 'USA' AND c.is_active = true;
+```
+
+:::tip Оптимизация JOIN
+PostgreSQL обычно сам оптимизирует порядок JOIN, но вы можете помочь ему, размещая наиболее селективные фильтры в WHERE как можно раньше.
+:::
+
+### LEFT JOIN vs INNER JOIN
+
+```sql
+-- Плохо: используем LEFT JOIN когда нужен INNER JOIN
+SELECT c.*, o.total_amount
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id
+WHERE o.status = 'delivered';
+
+-- Хорошо: используем INNER JOIN
+SELECT c.*, o.total_amount
+FROM customers c
+INNER JOIN orders o ON c.id = o.customer_id
+WHERE o.status = 'delivered';
+```
+
+LEFT JOIN заставляет PostgreSQL сканировать все строки из левой таблицы, даже если условие WHERE их потом отфильтрует.
+
+### Избегайте JOIN в подзапросах, когда можно использовать EXISTS
+
+```sql
+-- Медленно: JOIN в подзапросе
+EXPLAIN ANALYZE
+SELECT c.*
+FROM customers c
+WHERE c.id IN (
+    SELECT o.customer_id 
+    FROM orders o 
+    WHERE o.total_amount > 1000
+);
+
+-- Быстрее: EXISTS
+EXPLAIN ANALYZE
+SELECT c.*
+FROM customers c
+WHERE EXISTS (
+    SELECT 1 
+    FROM orders o 
+    WHERE o.customer_id = c.id 
+        AND o.total_amount > 1000
+);
+
+-- Еще один вариант: прямой JOIN с DISTINCT
+EXPLAIN ANALYZE
+SELECT DISTINCT c.*
+FROM customers c
+INNER JOIN orders o ON c.id = o.customer_id
+WHERE o.total_amount > 1000;
+```
+
+## Стратегия 3: Оптимизация подзапросов
+
+### Проблема: коррелированные подзапросы
+
+```sql
+-- Плохо: коррелированный подзапрос выполняется для каждой строки
+EXPLAIN ANALYZE
+SELECT 
+    c.first_name,
+    c.last_name,
+    (SELECT COUNT(*) 
+     FROM orders o 
+     WHERE o.customer_id = c.id) as order_count
+FROM customers c
+WHERE c.country = 'USA';
+```
+
+```
+Seq Scan on customers c  (cost=0.00..1234567.89 rows=20000 width=45)
+    (actual time=0.123..5678.901 rows=20000 loops=1)
+  Filter: ((country)::text = 'USA'::text)
+  SubPlan 1
+    ->  Aggregate  (cost=234.56..234.57 rows=1 width=8)
+          ->  Index Scan using idx_orders_customer_id on orders o
+                (cost=0.42..234.12 rows=40 width=0)
+                Index Cond: (customer_id = c.id)
+```
+
+### Решение: используйте JOIN с GROUP BY
+
+```sql
+-- Хорошо: один JOIN вместо множества подзапросов
+EXPLAIN ANALYZE
+SELECT 
+    c.first_name,
+    c.last_name,
+    COUNT(o.id) as order_count
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id
+WHERE c.country = 'USA'
+GROUP BY c.id, c.first_name, c.last_name;
+```
+
+### Lateral JOIN для сложных подзапросов
+
+```sql
+-- Плохо: множественные коррелированные подзапросы
+SELECT 
+    p.name,
+    (SELECT AVG(rating) FROM reviews r WHERE r.product_id = p.id),
+    (SELECT COUNT(*) FROM reviews r WHERE r.product_id = p.id),
+    (SELECT MAX(created_at) FROM reviews r WHERE r.product_id = p.id)
+FROM products p
+WHERE p.category = 'Electronics';
+
+-- Хорошо: LATERAL JOIN (PostgreSQL 9.3+)
+EXPLAIN ANALYZE
+SELECT 
+    p.name,
+    r.avg_rating,
+    r.review_count,
+    r.last_review
+FROM products p
+CROSS JOIN LATERAL (
+    SELECT 
+        AVG(rating) as avg_rating,
+        COUNT(*) as review_count,
+        MAX(created_at) as last_review
+    FROM reviews
+    WHERE product_id = p.id
+) r
+WHERE p.category = 'Electronics';
+```
+
+### Common Table Expressions (CTE) vs подзапросы
+
+```sql
+-- CTE: читаемо, но может быть медленнее
+EXPLAIN ANALYZE
+WITH customer_orders AS (
+    SELECT 
+        customer_id,
+        COUNT(*) as order_count,
+        SUM(total_amount) as total_spent
+    FROM orders
+    WHERE status = 'delivered'
+    GROUP BY customer_id
+)
+SELECT c.first_name, c.last_name, co.order_count, co.total_spent
+FROM customers c
+JOIN customer_orders co ON c.id = co.customer_id
+WHERE co.total_spent > 5000;
+
+-- Подзапрос: может быть оптимизирован лучше
+EXPLAIN ANALYZE
+SELECT c.first_name, c.last_name, sq.order_count, sq.total_spent
+FROM customers c
+JOIN (
+    SELECT 
+        customer_id,
+        COUNT(*) as order_count,
+        SUM(total_amount) as total_spent
+    FROM orders
+    WHERE status = 'delivered'
+    GROUP BY customer_id
+    HAVING SUM(total_amount) > 5000
+) sq ON c.id = sq.customer_id;
+```
+
+:::info CTE с материализацией
+В PostgreSQL 12+ можно явно указать материализацию CTE:
+```sql
+WITH customer_orders AS MATERIALIZED (...)  -- принудительная материализация
+WITH customer_orders AS NOT MATERIALIZED (...)  -- встраивание в запрос
+```
+:::
+
+## Стратегия 4: Оптимизация WHERE условий
+
+### Используйте индексируемые выражения
+
+```sql
+-- Плохо: функция делает индекс бесполезным
+EXPLAIN ANALYZE
+SELECT * FROM customers 
+WHERE UPPER(email) = 'CUSTOMER123@EXAMPLE.COM';
+
+-- Хорошо: создаем функциональный индекс
+CREATE INDEX idx_customers_email_upper ON customers(UPPER(email));
+
+EXPLAIN ANALYZE
+SELECT * FROM customers 
+WHERE UPPER(email) = 'CUSTOMER123@EXAMPLE.COM';
+
+-- Еще лучше: используйте регистронезависимое сравнение
+CREATE INDEX idx_customers_email_lower ON customers(LOWER(email));
+
+EXPLAIN ANALYZE
+SELECT * FROM customers 
+WHERE LOWER(email) = LOWER('Customer123@Example.com');
+```
+
+### Избегайте OR с разными колонками
+
+```sql
+-- Плохо: OR предотвращает использование индексов
+EXPLAIN ANALYZE
+SELECT * FROM products 
+WHERE category = 'Electronics' OR price < 50;
+
+-- Хорошо: разделите на два запроса с UNION
+EXPLAIN ANALYZE
+SELECT * FROM products WHERE category = 'Electronics'
+UNION
+SELECT * FROM products WHERE price < 50 AND category != 'Electronics';
+
+-- Или используйте UNION ALL если дубликаты невозможны
+EXPLAIN ANALYZE
+SELECT * FROM products WHERE category = 'Electronics'
+UNION ALL
+SELECT * FROM products WHERE price < 50 AND category IS DISTINCT FROM 'Electronics';
+```
+
+### Оптимизация LIKE запросов
+
+```sql
+-- Плохо: LIKE с % в начале не использует индекс
+EXPLAIN ANALYZE
+SELECT * FROM customers 
+WHERE email LIKE '%@gmail.com';
+
+-- Хорошо: LIKE без % в начале использует индекс
+EXPLAIN ANALYZE
+SELECT * FROM customers 
+WHERE email LIKE 'john%@gmail.com';
+
+-- Для поиска подстрок используйте полнотекстовый поиск или триграммы
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE INDEX idx_customers_email_trgm ON customers 
+USING gin(email gin_trgm_ops);
+
+EXPLAIN ANALYZE
+SELECT * FROM customers 
+WHERE email LIKE '%gmail%';
+```
+
+### Избегайте NOT IN с NULL значениями
+
+```sql
+-- Проблема: NOT IN возвращает неожиданные результаты с NULL
+SELECT * FROM customers 
+WHERE id NOT IN (SELECT customer_id FROM orders WHERE status = 'cancelled');
+
+-- Если customer_id может быть NULL, результат будет пустым!
+
+-- Решение 1: NOT EXISTS
+EXPLAIN ANALYZE
+SELECT * FROM customers c
+WHERE NOT EXISTS (
+    SELECT 1 FROM orders o 
+    WHERE o.customer_id = c.id AND o.status = 'cancelled'
+);
+
+-- Решение 2: LEFT JOIN с NULL проверкой
+EXPLAIN ANALYZE
+SELECT c.*
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id AND o.status = 'cancelled'
+WHERE o.id IS NULL;
+
+-- Решение 3: явная фильтрация NULL
+SELECT * FROM customers 
+WHERE id NOT IN (
+    SELECT customer_id 
+    FROM orders 
+    WHERE status = 'cancelled' AND customer_id IS NOT NULL
+);
+```
+
+### Оптимизация диапазонов дат
+
+```sql
+-- Плохо: функции препятствуют использованию индексов
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+WHERE DATE(order_date) = '2024-01-15';
+
+-- Хорошо: используйте диапазоны
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+WHERE order_date >= '2024-01-15' 
+    AND order_date < '2024-01-16';
+
+-- Плохо: EXTRACT предотвращает использование индекса
+SELECT * FROM orders 
+WHERE EXTRACT(YEAR FROM order_date) = 2024;
+
+-- Хорошо: диапазон дат
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+WHERE order_date >= '2024-01-01' 
+    AND order_date < '2025-01-01';
+```
+
+## Стратегия 5: Оптимизация агрегации
+
+### Используйте индексы для MIN/MAX
+
+```sql
+-- Медленно: полное сканирование для MAX
+EXPLAIN ANALYZE
+SELECT MAX(order_date) FROM orders;
+
+-- Быстро: использование индекса
+CREATE INDEX idx_orders_date_desc ON orders(order_date DESC);
+
+EXPLAIN ANALYZE
+SELECT MAX(order_date) FROM orders;
+
+-- Еще быстрее: прямой запрос с LIMIT
+EXPLAIN ANALYZE
+SELECT order_date 
+FROM orders 
+ORDER BY order_date DESC 
+LIMIT 1;
+```
+
+### Избегайте DISTINCT когда возможно
+
+```sql
+-- Медленно: DISTINCT требует сортировки/хеширования
+EXPLAIN ANALYZE
+SELECT DISTINCT country FROM customers;
+
+-- Быстрее: GROUP BY (если нужна дополнительная информация)
+EXPLAIN ANALYZE
+SELECT country, COUNT(*) 
+FROM customers 
+GROUP BY country;
+
+-- Еще быстрее: EXISTS для проверки существования
+EXPLAIN ANALYZE
+SELECT country 
+FROM customers c1
+WHERE EXISTS (
+    SELECT 1 FROM customers c2 
+    WHERE c2.country = c1.country
+)
+GROUP BY country;
+```
+
+### Частичные агрегаты
+
+```sql
+-- Медленно: агрегация всей таблицы
+SELECT category, AVG(price) 
+FROM products 
+GROUP BY category;
+
+-- Быстрее: агрегация с фильтром
+SELECT category, AVG(price) FILTER (WHERE stock_quantity > 0)
+FROM products 
+GROUP BY category;
+
+-- Использование FILTER (PostgreSQL 9.4+)
+SELECT 
+    category,
+    COUNT(*) as total_products,
+    COUNT(*) FILTER (WHERE price > 100) as expensive_products,
+    AVG(price) FILTER (WHERE stock_quantity > 0) as avg_price_in_stock
+FROM products
+GROUP BY category;
+```
+
+### Оптимизация COUNT(*)
+
+```sql
+-- Очень медленно на больших таблицах: точный COUNT
+SELECT COUNT(*) FROM orders;
+
+-- Быстрая оценка из статистики (приблизительно)
+SELECT reltuples::BIGINT AS estimate 
+FROM pg_class 
+WHERE relname = 'orders';
+
+-- Альтернатива: используйте EXPLAIN
+EXPLAIN SELECT COUNT(*) FROM orders;
+-- Смотрите на rows=... в выводе
+
+-- Для частых COUNT с условиями: материализованные представления
+CREATE MATERIALIZED VIEW orders_count_by_status AS
+SELECT status, COUNT(*) as count
+FROM orders
+GROUP BY status;
+
+CREATE INDEX idx_orders_count_status ON orders_count_by_status(status);
+
+-- Обновление раз в час (настройте по необходимости)
+REFRESH MATERIALIZED VIEW CONCURRENTLY orders_count_by_status;
+```
+
+## Стратегия 6: Работа с большими наборами данных
+
+### Пагинация: OFFSET vs курсоры
+
+```sql
+-- Плохо: OFFSET замедляется на больших смещениях
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+ORDER BY id 
+LIMIT 100 OFFSET 100000;
+
+-- Проблема: PostgreSQL должен обработать первые 100,100 строк
+
+-- Хорошо: пагинация по ключу (keyset pagination)
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+WHERE id > 100000 
+ORDER BY id 
+LIMIT 100;
+
+-- Для сложной сортировки
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+WHERE (order_date, id) > ('2024-01-15', 50000)
+ORDER BY order_date, id 
+LIMIT 100;
+```
+
+### Batch обработка вместо циклов
+
+```sql
+-- ОЧЕНЬ ПЛОХО: обновление в цикле
+DO $$
+DECLARE
+    ord RECORD;
+BEGIN
+    FOR ord IN SELECT id FROM orders WHERE status = 'pending'
+    LOOP
+        UPDATE orders 
+        SET status = 'processing' 
+        WHERE id = ord.id;
+    END LOOP;
+END $$;
+
+-- ХОРОШО: одно массовое обновление
+UPDATE orders 
+SET status = 'processing' 
+WHERE status = 'pending';
+
+-- Для больших таблиц: batch обновления
+DO $$
+DECLARE
+    batch_size INT := 10000;
+    affected_rows INT;
+BEGIN
+    LOOP
+        UPDATE orders 
+        SET status = 'processing' 
+        WHERE id IN (
+            SELECT id 
+            FROM orders 
+            WHERE status = 'pending' 
+            LIMIT batch_size
+        );
+        
+        GET DIAGNOSTICS affected_rows = ROW_COUNT;
+        EXIT WHEN affected_rows = 0;
+        
+        COMMIT;  -- Если используется в процедуре с поддержкой транзакций
+    END LOOP;
+END $$;
+```
+
+### Используйте COPY для массовой загрузки
+
+```sql
+-- Медленно: множественные INSERT
+INSERT INTO products (name, category, price) VALUES ('Product 1', 'Cat1', 10.00);
+INSERT INTO products (name, category, price) VALUES ('Product 2', 'Cat2', 20.00);
+-- ... тысячи строк
+
+-- Быстрее: многострочный INSERT
+INSERT INTO products (name, category, price) VALUES 
+('Product 1', 'Cat1', 10.00),
+('Product 2', 'Cat2', 20.00),
+('Product 3', 'Cat3', 30.00);
+-- ... до нескольких тысяч строк
+
+-- Самое быстрое: COPY
+COPY products (name, category, price) FROM STDIN WITH CSV;
+Product 1,Cat1,10.00
+Product 2,Cat2,20.00
+Product 3,Cat3,30.00
+\.
+
+-- Или из файла
+COPY products FROM '/path/to/products.csv' WITH CSV HEADER;
+```
+
+### Временные таблицы для промежуточных результатов
+
+```sql
+-- Сложный запрос с множественными вычислениями
+-- Плохо: повторяющиеся подзапросы
+SELECT 
+    country,
+    (SELECT COUNT(*) FROM orders o JOIN customers c2 ON o.customer_id = c2.id 
+     WHERE c2.country = c.country) as order_count,
+    (SELECT SUM(total_amount) FROM orders o JOIN customers c2 ON o.customer_id = c2.id 
+     WHERE c2.country = c.country) as total_revenue
+FROM customers c
+GROUP BY country;
+
+-- Хорошо: временная таблица для промежуточных результатов
+CREATE TEMP TABLE country_stats AS
+SELECT 
+    c.country,
+    COUNT(o.id) as order_count,
+    SUM(o.total_amount) as total_revenue,
+    AVG(o.total_amount) as avg_order_value
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id
+GROUP BY c.country;
+
+-- Создание индекса на временной таблице
+CREATE INDEX idx_temp_country ON country_stats(country);
+
+-- Теперь можем эффективно использовать результаты
+SELECT * FROM country_stats WHERE order_count > 1000;
+SELECT * FROM country_stats ORDER BY total_revenue DESC;
+```
+
+## Стратегия 7: Денормализация и материализованные представления
+
+### Материализованные представления для сложных агрегаций
+
+```sql
+-- Проблема: сложный запрос выполняется часто
+-- Каждый раз пересчитывается полностью
+SELECT 
+    p.id,
+    p.name,
+    p.category,
+    COUNT(DISTINCT r.id) as review_count,
+    AVG(r.rating)::NUMERIC(3,2) as avg_rating,
+    COUNT(DISTINCT oi.order_id) as times_ordered,
+    SUM(oi.quantity) as total_quantity_sold
+FROM products p
+LEFT JOIN reviews r ON p.id = r.product_id
+LEFT JOIN order_items oi ON p.id = oi.product_id
+GROUP BY p.id, p.name, p.category;
+
+-- Решение: материализованное представление
+CREATE MATERIALIZED VIEW product_statistics AS
+SELECT 
+    p.id,
+    p.name,
+    p.category,
+    p.price,
+    COUNT(DISTINCT r.id) as review_count,
+    AVG(r.rating)::NUMERIC(3,2) as avg_rating,
+    COUNT(DISTINCT oi.order_id) as times_ordered,
+    SUM(oi.quantity) as total_quantity_sold,
+    NOW() as last_updated
+FROM products p
+LEFT JOIN reviews r ON p.id = r.product_id
+LEFT JOIN order_items oi ON p.id = oi.product_id
+GROUP BY p.id, p.name, p.category, p.price;
+
+-- Создание индексов на материализованном представлении
+CREATE INDEX idx_product_stats_category ON product_statistics(category);
+CREATE INDEX idx_product_stats_rating ON product_statistics(avg_rating);
+
+-- Быстрый запрос к материализованному представлению
+SELECT * FROM product_statistics 
+WHERE category = 'Electronics' 
+ORDER BY avg_rating DESC;
+
+-- Обновление материализованного представления
+REFRESH MATERIALIZED VIEW product_statistics;
+
+-- Обновление без блокировки чтения (требует уникального индекса)
+CREATE UNIQUE INDEX idx_product_stats_id ON product_statistics(id);
+REFRESH MATERIALIZED VIEW CONCURRENTLY product_statistics;
+```
+
+### Денормализация для частых запросов
+
+```sql
+-- Проблема: JOIN выполняется постоянно
+SELECT o.*, c.first_name, c.last_name, c.email
+FROM orders o
+JOIN customers c ON o.customer_id = c.id;
+
+-- Решение: денормализация (добавляем колонки в orders)
+ALTER TABLE orders ADD COLUMN customer_name VARCHAR(100);
+ALTER TABLE orders ADD COLUMN customer_email VARCHAR(100);
+
+-- Заполнение существующих данных
+UPDATE orders o
+SET 
+    customer_name = c.first_name || ' ' || c.last_name,
+    customer_email = c.email
+FROM customers c
+WHERE o.customer_id = c.id;
+
+-- Создание триггера для автоматического обновления
+CREATE OR REPLACE FUNCTION update_order_customer_info()
+RETURNS TRIGGER AS $
+BEGIN
+    SELECT 
+        first_name || ' ' || last_name,
+        email
+    INTO 
+        NEW.customer_name,
+        NEW.customer_email
+    FROM customers
+    WHERE id = NEW.customer_id;
+    
+    RETURN NEW;
+END;
+$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_order_customer_info
+BEFORE INSERT OR UPDATE OF customer_id ON orders
+FOR EACH ROW
+EXECUTE FUNCTION update_order_customer_info();
+
+-- Теперь запрос не требует JOIN
+SELECT * FROM orders WHERE customer_email LIKE '%@gmail.com';
+```
+
+:::warning Компромиссы денормализации
+Денормализация ускоряет чтение, но усложняет обновления и занимает больше места. Используйте только для часто читаемых, редко обновляемых данных.
+:::
+
+### Вычисляемые колонки для частых расчетов
+
+```sql
+-- Проблема: вычисление при каждом запросе
+SELECT 
+    id,
+    quantity * unit_price * (1 - discount_percent / 100) as line_total
+FROM order_items;
+
+-- Решение: сохраненная вычисляемая колонка (PostgreSQL 12+)
+ALTER TABLE order_items 
+ADD COLUMN line_total NUMERIC(12, 2) 
+GENERATED ALWAYS AS (quantity * unit_price * (1 - discount_percent / 100)) STORED;
+
+-- Создание индекса на вычисляемой колонке
+CREATE INDEX idx_order_items_line_total ON order_items(line_total);
+
+-- Теперь можно эффективно фильтровать и сортировать
+SELECT * FROM order_items WHERE line_total > 1000;
+```
+
+## Стратегия 8: Оптимизация параметров PostgreSQL
+
+### Настройка параметров планировщика
+
+```sql
+-- Просмотр текущих настроек
+SHOW work_mem;
+SHOW shared_buffers;
+SHOW effective_cache_size;
+
+-- Временное изменение для сессии
+SET work_mem = '256MB';
+SET enable_seqscan = off;  -- Принудительно отключить Seq Scan (для тестирования)
+
+-- Постоянное изменение в postgresql.conf:
+-- shared_buffers = 4GB          # 25% от RAM
+-- effective_cache_size = 12GB   # 75% от RAM
+-- work_mem = 256MB              # RAM / (max_connections / 2)
+-- maintenance_work_mem = 1GB    # Для VACUUM, CREATE INDEX
+-- random_page_cost = 1.1        # Для SSD (по умолчанию 4.0)
+-- effective_io_concurrency = 200 # Для SSD
+```
+
+### Настройка для конкретных запросов
+
+```sql
+-- Увеличение work_mem для тяжелых сортировок
+SET work_mem = '512MB';
+
+EXPLAIN ANALYZE
+SELECT * FROM orders 
+ORDER BY total_amount DESC 
+LIMIT 1000;
+
+-- Изменение стоимости случайного доступа для SSD
+SET random_page_cost = 1.1;
+
+EXPLAIN ANALYZE
+SELECT * FROM orders WHERE id = ANY(ARRAY[1,2,3,4,5]);
+
+-- Настройка параллельных запросов (PostgreSQL 9.6+)
+SET max_parallel_workers_per_gather = 4;
+SET parallel_tuple_cost = 0.01;
+
+EXPLAIN ANALYZE
+SELECT country, COUNT(*) 
+FROM customers 
+GROUP BY country;
+```
+
+### Параллельное выполнение запросов
+
+```sql
+-- PostgreSQL автоматически использует параллелизм для больших таблиц
+
+-- Просмотр плана с параллелизмом
+EXPLAIN ANALYZE
+SELECT category, AVG(price) 
+FROM products 
+GROUP BY category;
+
+-- Результат может показать:
+-- Finalize GroupAggregate
+--   ->  Gather Merge
+--         Workers Planned: 2
+--         ->  Partial GroupAggregate
+--               ->  Sort
+--                     ->  Parallel Seq Scan on products
+
+-- Принудительное отключение параллелизма
+SET max_parallel_workers_per_gather = 0;
+
+-- Настройка минимального размера для параллелизма
+SET min_parallel_table_scan_size = '8MB';
+SET min_parallel_index_scan_size = '512kB';
+```
+
+## Стратегия 9: Мониторинг и диагностика
+
+### Поиск медленных запросов
+
+```sql
+-- Включение логирования медленных запросов в postgresql.conf:
+-- log_min_duration_statement = 1000  # Логировать запросы > 1 секунды
+-- log_line_prefix = '%t [%p]: '
+-- log_statement = 'all'  # Опционально: все запросы
+
+-- Просмотр активных запросов
+SELECT 
+    pid,
+    now() - query_start as duration,
+    state,
+    query
+FROM pg_stat_activity
+WHERE state != 'idle'
+ORDER BY duration DESC;
+
+-- Поиск долго выполняющихся запросов
+SELECT 
+    pid,
+    now() - query_start as duration,
+    state,
+    wait_event_type,
+    wait_event,
+    query
+FROM pg_stat_activity
+WHERE state = 'active' 
+    AND now() - query_start > interval '5 minutes'
+ORDER BY duration DESC;
+
+-- Завершение долго выполняющегося запроса
+SELECT pg_terminate_backend(pid);
+
+-- Мягкая отмена запроса (может не сработать)
+SELECT pg_cancel_backend(pid);
+```
+
+### Анализ использования таблиц
+
+```sql
+-- Статистика сканирований таблиц
+SELECT 
+    schemaname,
+    tablename,
+    seq_scan,           -- Количество последовательных сканирований
+    seq_tup_read,       -- Строк прочитано последовательно
+    idx_scan,           -- Количество сканирований по индексам
+    idx_tup_fetch,      -- Строк получено через индексы
+    n_tup_ins,          -- Вставлено строк
+    n_tup_upd,          -- Обновлено строк
+    n_tup_del           -- Удалено строк
+FROM pg_stat_user_tables
+ORDER BY seq_scan DESC;
+
+-- Таблицы с высоким соотношением Seq Scan / Index Scan
+SELECT 
+    schemaname,
+    tablename,
+    seq_scan,
+    idx_scan,
+    CASE 
+        WHEN idx_scan > 0 
+        THEN round((seq_scan::numeric / idx_scan), 2)
+        ELSE seq_scan
+    END as seq_to_idx_ratio,
+    n_live_tup as rows
+FROM pg_stat_user_tables
+WHERE schemaname = 'public'
+    AND seq_scan > 0
+ORDER BY seq_to_idx_ratio DESC;
+
+-- Таблицы, требующие VACUUM
+SELECT 
+    schemaname,
+    tablename,
+    n_live_tup,
+    n_dead_tup,
+    round(n_dead_tup * 100.0 / NULLIF(n_live_tup + n_dead_tup, 0), 2) as dead_percentage,
+    last_vacuum,
+    last_autovacuum
+FROM pg_stat_user_tables
+WHERE n_dead_tup > 1000
+ORDER BY dead_percentage DESC;
+```
+
+### Анализ размеров и bloat
+
+```sql
+-- Размеры таблиц и индексов
+SELECT 
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as total_size,
+    pg_size_pretty(pg_relation_size(schemaname||'.'||tablename)) as table_size,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename) - 
+                   pg_relation_size(schemaname||'.'||tablename)) as indexes_size
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+
+-- Оценка bloat в таблицах
+SELECT 
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size,
+    n_live_tup,
+    n_dead_tup,
+    round(n_dead_tup * 100.0 / NULLIF(n_live_tup + n_dead_tup, 0), 2) as bloat_percentage
+FROM pg_stat_user_tables
+WHERE schemaname = 'public'
+ORDER BY n_dead_tup DESC;
+```
+
+### Статистика кеша
+
+```sql
+-- Эффективность кеша для таблиц
+SELECT 
+    schemaname,
+    tablename,
+    heap_blks_read as disk_reads,
+    heap_blks_hit as cache_hits,
+    round(
+        heap_blks_hit * 100.0 / 
+        NULLIF(heap_blks_hit + heap_blks_read, 0), 
+        2
+    ) as cache_hit_ratio
+FROM pg_statio_user_tables
+WHERE schemaname = 'public'
+    AND (heap_blks_read + heap_blks_hit) > 0
+ORDER BY cache_hit_ratio;
+
+-- Общая эффективность кеша базы данных
+SELECT 
+    sum(heap_blks_read) as heap_read,
+    sum(heap_blks_hit) as heap_hit,
+    round(
+        sum(heap_blks_hit) * 100.0 / 
+        NULLIF(sum(heap_blks_hit) + sum(heap_blks_read), 0),
+        2
+    ) as cache_hit_ratio
+FROM pg_statio_user_tables;
+```
+
+## Стратегия 10: Лучшие практики и чек-лист
+
+### Чек-лист оптимизации запросов
+
+Перед запуском в production проверьте:
+
+**1. Индексы**
+- ✅ Есть ли индексы на всех колонках в WHERE?
+- ✅ Есть ли индексы на колонках JOIN?
+- ✅ Правильный ли порядок колонок в составных индексах?
+- ✅ Используются ли частичные индексы где возможно?
+- ✅ Нет ли избыточных индексов?
+
+**2. Запросы**
+- ✅ Используется ли SELECT * вместо выбора конкретных колонок?
+- ✅ Есть ли ненужные JOIN?
+- ✅ Можно ли заменить подзапросы на JOIN?
+- ✅ Правильно ли используется LEFT JOIN vs INNER JOIN?
+- ✅ Есть ли функции в WHERE, которые предотвращают использование индексов?
+
+**3. Производительность**
+- ✅ Запущен ли EXPLAIN ANALYZE?
+- ✅ Проверена ли статистика (ANALYZE)?
+- ✅ Оценки планировщика близки к реальным значениям?
+- ✅ Нет ли Sequential Scan на больших таблицах?
+- ✅ Используется ли кеш эффективно?
+
+### Типичные антипаттерны
+
+```sql
+-- ❌ АНТИПАТТЕРН 1: SELECT *
+SELECT * FROM orders WHERE status = 'delivered';
+
+-- ✅ ПРАВИЛЬНО: выбирайте только нужные колонки
+SELECT id, customer_id, total_amount, order_date 
+FROM orders WHERE status = 'delivered';
+
+-- ❌ АНТИПАТТЕРН 2: OR с разными таблицами
+SELECT * FROM orders 
+WHERE customer_id = 123 OR product_id IN (SELECT id FROM products WHERE category = 'Electronics');
+
+-- ✅ ПРАВИЛЬНО: разделите на два запроса
+SELECT * FROM orders WHERE customer_id = 123
+UNION
+SELECT o.* FROM orders o 
+JOIN order_items oi ON o.id = oi.order_id
+JOIN products p ON oi.product_id = p.id
+WHERE p.category = 'Electronics';
+
+-- ❌ АНТИПАТТЕРН 3: функции в WHERE
+SELECT * FROM customers WHERE YEAR(created_at) = 2024;
+
+-- ✅ ПРАВИЛЬНО: используйте диапазоны
+SELECT * FROM customers 
+WHERE created_at >= '2024-01-01' AND created_at < '2025-01-01';
+
+-- ❌ АНТИПАТТЕРН 4: N+1 запросов
+-- В коде: для каждого customer делается отдельный запрос
+SELECT * FROM customers;
+-- Затем для каждого customer:
+SELECT * FROM orders WHERE customer_id = ?;
+
+-- ✅ ПРАВИЛЬНО: один JOIN
+SELECT c.*, o.* 
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id;
+
+-- ❌ АНТИПАТТЕРН 5: NOT IN с подзапросом
+SELECT * FROM products 
+WHERE id NOT IN (SELECT product_id FROM order_items);
+
+-- ✅ ПРАВИЛЬНО: NOT EXISTS или LEFT JOIN
+SELECT p.* FROM products p
+WHERE NOT EXISTS (
+    SELECT 1 FROM order_items oi WHERE oi.product_id = p.id
+);
+```
+
+### Шаблоны для частых задач
+
+```sql
+-- Топ N записей с tie-breaking
+SELECT * FROM (
+    SELECT 
+        *,
+        ROW_NUMBER() OVER (PARTITION BY category ORDER BY price DESC, id) as rn
+    FROM products
+) t
+WHERE rn <= 10;
+
+-- Удаление дубликатов (оставить один)
+DELETE FROM customers a USING customers b
+WHERE a.id < b.id 
+    AND a.email = b.email;
+
+-- Или через CTE (более читаемо)
+WITH duplicates AS (
+    SELECT id,
+           ROW_NUMBER() OVER (PARTITION BY email ORDER BY id) as rn
+    FROM customers
+)
+DELETE FROM customers
+WHERE id IN (SELECT id FROM duplicates WHERE rn > 1);
+
+-- Эффективное обновление из SELECT
+UPDATE products p
+SET stock_quantity = t.new_quantity
+FROM (
+    SELECT 
+        product_id,
+        SUM(quantity) as new_quantity
+    FROM order_items
+    GROUP BY product_id
+) t
+WHERE p.id = t.product_id;
+
+-- Upsert (INSERT ... ON CONFLICT)
+INSERT INTO products (id, name, price)
+VALUES (1, 'Product 1', 100.00)
+ON CONFLICT (id) DO UPDATE
+SET 
+    name = EXCLUDED.name,
+    price = EXCLUDED.price,
+    updated_at = CURRENT_TIMESTAMP;
+
+-- Bulk upsert
+INSERT INTO products (id, name, price)
+SELECT id, name, price FROM temp_products
+ON CONFLICT (id) DO UPDATE
+SET 
+    name = EXCLUDED.name,
+    price = EXCLUDED.price;
+```
+
+### Оптимизация для разных нагрузок
+
+**OLTP (много маленьких транзакций)**
+```sql
+-- Используйте простые индексы
+CREATE INDEX idx_orders_customer ON orders(customer_id);
+
+-- Избегайте сложных JOIN
+-- Используйте денормализацию для частых запросов
+
+-- Настройки PostgreSQL для OLTP:
+-- shared_buffers = 25% RAM
+-- work_mem = 16MB - 64MB
+-- maintenance_work_mem = 256MB - 1GB
+-- random_page_cost = 1.1 (SSD)
+-- effective_cache_size = 75% RAM
+```
+
+**OLAP (аналитические запросы)**
+```sql
+-- Используйте материализованные представления
+CREATE MATERIALIZED VIEW daily_sales AS
+SELECT 
+    DATE(order_date) as date,
+    COUNT(*) as order_count,
+    SUM(total_amount) as revenue
+FROM orders
+GROUP BY DATE(order_date);
+
+-- Используйте колоночные индексы для больших аналитических запросов
+-- Рассмотрите расширение cstore_fdw для колоночного хранения
+
+-- Настройки PostgreSQL для OLAP:
+-- work_mem = 256MB - 1GB
+-- maintenance_work_mem = 2GB - 4GB
+-- max_parallel_workers_per_gather = 4-8
+-- random_page_cost = 1.1
+```
+
+## Практические примеры оптимизации
+
+### Пример 1: Оптимизация отчета по продажам
+
+```sql
+-- ❌ ПЛОХО: множественные подзапросы
+SELECT 
+    p.id,
+    p.name,
+    p.category,
+    (SELECT COUNT(*) FROM order_items oi WHERE oi.product_id = p.id) as times_sold,
+    (SELECT SUM(oi.quantity) FROM order_items oi WHERE oi.product_id = p.id) as total_quantity,
+    (SELECT AVG(r.rating) FROM reviews r WHERE r.product_id = p.id) as avg_rating,
+    (SELECT COUNT(*) FROM reviews r WHERE r.product_id = p.id) as review_count
+FROM products p
+WHERE p.category = 'Electronics'
+ORDER BY times_sold DESC
+LIMIT 100;
+
+-- ✅ ХОРОШО: JOIN с агрегацией
+SELECT 
+    p.id,
+    p.name,
+    p.category,
+    COUNT(DISTINCT oi.order_id) as times_sold,
+    COALESCE(SUM(oi.quantity), 0) as total_quantity,
+    ROUND(AVG(r.rating), 2) as avg_rating,
+    COUNT(DISTINCT r.id) as review_count
+FROM products p
+LEFT JOIN order_items oi ON p.id = oi.product_id
+LEFT JOIN reviews r ON p.id = r.product_id
+WHERE p.category = 'Electronics'
+GROUP BY p.id, p.name, p.category
+ORDER BY times_sold DESC
+LIMIT 100;
+
+-- ✅ ЕЩЕ ЛУЧШЕ: материализованное представление для частых отчетов
+CREATE MATERIALIZED VIEW product_sales_stats AS
+SELECT 
+    p.id,
+    p.name,
+    p.category,
+    COUNT(DISTINCT oi.order_id) as times_sold,
+    COALESCE(SUM(oi.quantity), 0) as total_quantity,
+    ROUND(AVG(r.rating), 2) as avg_rating,
+    COUNT(DISTINCT r.id) as review_count,
+    NOW() as last_updated
+FROM products p
+LEFT JOIN order_items oi ON p.id = oi.product_id
+LEFT JOIN reviews r ON p.id = r.product_id
+GROUP BY p.id, p.name, p.category;
+
+CREATE INDEX idx_product_sales_category ON product_sales_stats(category);
+CREATE INDEX idx_product_sales_times_sold ON product_sales_stats(times_sold DESC);
+
+-- Быстрый запрос
+SELECT * FROM product_sales_stats
+WHERE category = 'Electronics'
+ORDER BY times_sold DESC
+LIMIT 100;
+```
+
+### Пример 2: Оптимизация поиска клиентов
+
+```sql
+-- ❌ ПЛОХО: LIKE с %
+SELECT * FROM customers 
+WHERE email LIKE '%gmail.com%' OR first_name LIKE '%John%';
+
+-- ✅ ХОРОШО: полнотекстовый поиск с триграммами
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE INDEX idx_customers_email_trgm ON customers USING gin(email gin_trgm_ops);
+CREATE INDEX idx_customers_name_trgm ON customers USING gin(first_name gin_trgm_ops);
+
+-- Быстрый поиск
+SELECT * FROM customers 
+WHERE email % 'gmail.com' OR first_name % 'John';
+
+-- Или полнотекстовый поиск
+ALTER TABLE customers ADD COLUMN search_vector tsvector;
+
+UPDATE customers SET search_vector = 
+    to_tsvector('english', 
+        COALESCE(first_name, '') || ' ' || 
+        COALESCE(last_name, '') || ' ' || 
+        COALESCE(email, '')
+    );
+
+CREATE INDEX idx_customers_search ON customers USING gin(search_vector);
+
+-- Триггер для автоматического обновления
+CREATE FUNCTION customers_search_update() RETURNS trigger AS $
+BEGIN
+    NEW.search_vector := to_tsvector('english',
+        COALESCE(NEW.first_name, '') || ' ' ||
+        COALESCE(NEW.last_name, '') || ' ' ||
+        COALESCE(NEW.email, '')
+    );
+    RETURN NEW;
+END;
+$ LANGUAGE plpgsql;
+
+CREATE TRIGGER customers_search_vector_update
+BEFORE INSERT OR UPDATE ON customers
+FOR EACH ROW EXECUTE FUNCTION customers_search_update();
+
+-- Поиск
+SELECT * FROM customers 
+WHERE search_vector @@ to_tsquery('english', 'John & gmail');
+```
+
+### Пример 3: Оптимизация dashboard с метриками
+
+```sql
+-- ❌ ПЛОХО: множественные запросы для dashboard
+SELECT COUNT(*) FROM orders WHERE status = 'delivered';
+SELECT SUM(total_amount) FROM orders WHERE status = 'delivered';
+SELECT COUNT(DISTINCT customer_id) FROM orders WHERE order_date > NOW() - interval '30 days';
+SELECT AVG(total_amount) FROM orders WHERE order_date > NOW() - interval '30 days';
+
+-- ✅ ХОРОШО: один запрос с FILTER
+SELECT 
+    COUNT(*) FILTER (WHERE status = 'delivered') as delivered_orders,
+    SUM(total_amount) FILTER (WHERE status = 'delivered') as delivered_revenue,
+    COUNT(DISTINCT customer_id) FILTER (WHERE order_date > NOW() - interval '30 days') as active_customers_30d,
+    AVG(total_amount) FILTER (WHERE order_date > NOW() - interval '30 days') as avg_order_30d,
+    COUNT(*) FILTER (WHERE order_date > NOW() - interval '7 days') as orders_last_week,
+    SUM(total_amount) FILTER (WHERE order_date > NOW() - interval '7 days') as revenue_last_week
+FROM orders;
+
+-- ✅ ЕЩЕ ЛУЧШЕ: кешируемая таблица с метриками
+CREATE TABLE dashboard_metrics (
+    metric_date DATE PRIMARY KEY,
+    delivered_orders BIGINT,
+    delivered_revenue NUMERIC,
+    active_customers_30d BIGINT,
+    avg_order_30d NUMERIC,
+    orders_last_week BIGINT,
+    revenue_last_week NUMERIC,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Процедура обновления метрик (запускается по расписанию)
+CREATE OR REPLACE FUNCTION update_dashboard_metrics()
+RETURNS void AS $
+BEGIN
+    INSERT INTO dashboard_metrics (
+        metric_date,
+        delivered_orders,
+        delivered_revenue,
+        active_customers_30d,
+        avg_order_30d,
+        orders_last_week,
+        revenue_last_week
+    )
+    SELECT 
+        CURRENT_DATE,
+        COUNT(*) FILTER (WHERE status = 'delivered'),
+        SUM(total_amount) FILTER (WHERE status = 'delivered'),
+        COUNT(DISTINCT customer_id) FILTER (WHERE order_date > NOW() - interval '30 days'),
+        AVG(total_amount) FILTER (WHERE order_date > NOW() - interval '30 days'),
+        COUNT(*) FILTER (WHERE order_date > NOW() - interval '7 days'),
+        SUM(total_amount) FILTER (WHERE order_date > NOW() - interval '7 days')
+    FROM orders
+    ON CONFLICT (metric_date) DO UPDATE
+    SET 
+        delivered_orders = EXCLUDED.delivered_orders,
+        delivered_revenue = EXCLUDED.delivered_revenue,
+        active_customers_30d = EXCLUDED.active_customers_30d,
+        avg_order_30d = EXCLUDED.avg_order_30d,
+        orders_last_week = EXCLUDED.orders_last_week,
+        revenue_last_week = EXCLUDED.revenue_last_week,
+        updated_at = CURRENT_TIMESTAMP;
+END;
+$ LANGUAGE plpgsql;
+
+-- Очень быстрый запрос для dashboard
+SELECT * FROM dashboard_metrics WHERE metric_date = CURRENT_DATE;
+```
+
+## Заключение
+
+Оптимизация запросов в PostgreSQL — это итеративный процесс, который требует понимания данных, паттернов доступа и инструментов анализа. Ключевые принципы:
+
+1. **Измеряйте, прежде чем оптимизировать** — используйте EXPLAIN ANALYZE
+2. **Создавайте правильные индексы** — но не создавайте их слишком много
+3. **Пишите простые запросы** — PostgreSQL лучше оптимизирует простые конструкции
+4. **Используйте современные возможности** — материализованные представления, FILTER, LATERAL
+5. **Регулярное обслуживание** — VACUUM, ANALYZE, REINDEX
+6. **Мониторинг** — отслеживайте медленные запросы и статистику использования
+
+:::tip Золотое правило
+80% проблем производительности решаются правильными индексами. Остальные 20% — правильной архитектурой и оптимизацией запросов.
+:::
+
+## Дополнительные ресурсы
+
+- [Официальная документация PostgreSQL по производительности](https://www.postgresql.org/docs/current/performance-tips.html)
+- [explain.depesz.com](https://explain.depesz.com/) — визуализация EXPLAIN
+- [pg_stat_statements](https://www.postgresql.org/docs/current/pgstatstatements.html) — расширение для отслеживания статистики выполнения
+- [pgbadger](https://github.com/darold/pgbadger) — анализатор логов PostgreSQL

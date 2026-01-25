@@ -1,0 +1,1653 @@
+---
+id: module-14-transactions
+title: "Транзакции и уровни изоляции"
+sidebar_label: "Транзакции и уровни изоляции"
+sidebar_position: 14
+description: "Полное руководство по транзакциям и уровням изоляции в PostgreSQL"
+keywords: [postgresql, transactions, isolation, acid, mvcc]
+---
+
+# Транзакции и уровни изоляции: ACID, MVCC
+
+## Введение
+
+Транзакции — это фундаментальная концепция реляционных баз данных, обеспечивающая целостность и согласованность данных. PostgreSQL реализует полноценную поддержку транзакций с использованием механизма MVCC (Multi-Version Concurrency Control), который позволяет эффективно работать с одновременными запросами без блокировок.
+
+:::tip Почему это важно?
+Понимание транзакций и уровней изоляции критически важно для разработки надежных приложений, особенно в многопользовательских системах с высокой нагрузкой.
+:::
+
+## ACID: Принципы транзакций
+
+ACID — это набор свойств, гарантирующих надежную обработку транзакций в базе данных.
+
+### Atomicity (Атомарность)
+
+Транзакция либо выполняется полностью, либо не выполняется совсем. Нет промежуточных состояний.
+
+```sql
+-- Пример атомарности: перевод денег между счетами
+BEGIN;
+    UPDATE accounts SET balance = balance - 100 WHERE account_id = 1;
+    UPDATE accounts SET balance = balance + 100 WHERE account_id = 2;
+COMMIT;
+
+-- Если любая из операций не удастся, обе откатятся
+BEGIN;
+    UPDATE accounts SET balance = balance - 100 WHERE account_id = 1;
+    -- Ошибка: недостаточно средств или нарушение ограничения
+    UPDATE accounts SET balance = balance + 100 WHERE account_id = 999; -- Несуществующий счет
+    -- Автоматический ROLLBACK, баланс account_id=1 не изменится
+ROLLBACK;
+```
+
+### Consistency (Согласованность)
+
+Транзакция переводит базу данных из одного согласованного состояния в другое, соблюдая все ограничения целостности.
+
+```sql
+-- Создадим таблицу с ограничениями
+CREATE TABLE accounts (
+    account_id SERIAL PRIMARY KEY,
+    customer_name VARCHAR(100),
+    balance NUMERIC(12, 2) CHECK (balance >= 0), -- Баланс не может быть отрицательным
+    account_type VARCHAR(20)
+);
+
+INSERT INTO accounts (customer_name, balance, account_type)
+VALUES 
+    ('Alice', 1000.00, 'checking'),
+    ('Bob', 500.00, 'savings');
+
+-- Попытка нарушить согласованность
+BEGIN;
+    UPDATE accounts SET balance = balance - 1500 WHERE account_id = 1;
+    -- ОШИБКА: new row violates check constraint "accounts_balance_check"
+ROLLBACK;
+
+-- PostgreSQL не позволит создать несогласованное состояние
+```
+
+### Isolation (Изоляция)
+
+Одновременно выполняющиеся транзакции не должны влиять друг на друга. Каждая транзакция выполняется так, как будто она единственная в системе.
+
+```sql
+-- Сессия 1
+BEGIN;
+    UPDATE accounts SET balance = balance - 100 WHERE account_id = 1;
+    -- Транзакция еще не закончена
+    
+-- Сессия 2 (параллельно)
+BEGIN;
+    SELECT balance FROM accounts WHERE account_id = 1;
+    -- Видит старое значение (до изменения в Сессии 1)
+    -- Благодаря изоляции
+COMMIT;
+
+-- Сессия 1 (продолжение)
+COMMIT;
+
+-- Теперь Сессия 2 увидит новое значение
+```
+
+### Durability (Долговечность)
+
+После успешного завершения транзакции (COMMIT), изменения сохраняются навсегда, даже при сбое системы.
+
+```sql
+BEGIN;
+    INSERT INTO accounts (customer_name, balance, account_type)
+    VALUES ('Charlie', 2000.00, 'checking');
+COMMIT;
+
+-- Даже если сервер упадет сразу после COMMIT,
+-- запись Charlie будет в базе после восстановления
+-- PostgreSQL использует WAL (Write-Ahead Logging)
+```
+
+## MVCC: Multi-Version Concurrency Control
+
+### Концепция MVCC
+
+MVCC — это механизм, который позволяет PostgreSQL обеспечивать высокую производительность при одновременной работе многих транзакций без блокировок для чтения.
+
+**Ключевые идеи:**
+
+1. **Множественные версии строк** — при UPDATE создается новая версия строки вместо изменения существующей
+2. **Снимок данных (snapshot)** — каждая транзакция видит согласованный снимок БД на момент начала
+3. **Без блокировок чтения** — читатели не блокируют писателей, писатели не блокируют читателей
+
+### Как работает MVCC
+
+```sql
+-- Подготовка
+CREATE TABLE products (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100),
+    price NUMERIC(10, 2),
+    stock INTEGER
+);
+
+INSERT INTO products (name, price, stock)
+VALUES ('Laptop', 1000.00, 10);
+
+-- Каждая строка в PostgreSQL имеет скрытые системные колонки:
+-- xmin - ID транзакции, создавшей строку
+-- xmax - ID транзакции, удалившей строку (0 если активна)
+-- ctid - физическое расположение строки
+
+-- Просмотр системных колонок
+SELECT xmin, xmax, ctid, * FROM products;
+
+/*
+ xmin | xmax | ctid  | id | name   | price   | stock
+------+------+-------+----+--------+---------+-------
+  751 |    0 | (0,1) |  1 | Laptop | 1000.00 |    10
+*/
+```
+
+### Демонстрация MVCC
+
+```sql
+-- Сессия 1: Начало транзакции
+BEGIN;
+    SELECT txid_current(); -- Узнаем ID текущей транзакции, например: 752
+    UPDATE products SET price = 1200.00 WHERE id = 1;
+    
+    -- Проверяем системные колонки
+    SELECT xmin, xmax, ctid, * FROM products WHERE id = 1;
+    /*
+     xmin | xmax | ctid  | id | name   | price   | stock
+    ------+------+-------+----+--------+---------+-------
+      752 |    0 | (0,2) |  1 | Laptop | 1200.00 |    10
+    */
+    
+    -- ПОКА НЕ ДЕЛАЕМ COMMIT
+
+-- Сессия 2 (параллельная транзакция)
+BEGIN;
+    SELECT txid_current(); -- ID: 753
+    
+    -- Видим старую версию строки!
+    SELECT xmin, xmax, ctid, * FROM products WHERE id = 1;
+    /*
+     xmin | xmax | ctid  | id | name   | price   | stock
+    ------+------+-------+----+--------+---------+-------
+      751 |  752 | (0,1) |  1 | Laptop | 1000.00 |    10
+    */
+    -- xmax = 752 означает, что транзакция 752 пометила эту версию как устаревшую
+    -- Но для нас (транзакция 753) транзакция 752 еще не завершена,
+    -- поэтому мы видим старую версию
+COMMIT;
+
+-- Сессия 1: Завершаем транзакцию
+COMMIT;
+
+-- Теперь у нас в таблице физически две версии строки:
+-- (0,1) - старая версия (price = 1000.00), xmax = 752
+-- (0,2) - новая версия (price = 1200.00), xmin = 752
+
+-- Новые транзакции увидят только новую версию
+SELECT * FROM products WHERE id = 1;
+-- price = 1200.00
+```
+
+### Очистка старых версий: VACUUM
+
+```sql
+-- MVCC создает "мертвые" строки (dead tuples)
+-- VACUUM удаляет их и освобождает место
+
+-- Ручной VACUUM
+VACUUM products;
+
+-- VACUUM FULL (перестраивает таблицу, блокирует на запись)
+VACUUM FULL products;
+
+-- VACUUM с ANALYZE (обновляет статистику)
+VACUUM ANALYZE products;
+
+-- Автоматический VACUUM (autovacuum)
+-- Настраивается в postgresql.conf:
+-- autovacuum = on
+-- autovacuum_vacuum_scale_factor = 0.2
+-- autovacuum_analyze_scale_factor = 0.1
+
+-- Просмотр статистики мертвых строк
+SELECT 
+    schemaname,
+    tablename,
+    n_live_tup as live_rows,
+    n_dead_tup as dead_rows,
+    last_vacuum,
+    last_autovacuum
+FROM pg_stat_user_tables
+WHERE tablename = 'products';
+```
+
+## Уровни изоляции транзакций
+
+SQL стандарт определяет четыре уровня изоляции. PostgreSQL реализует три из них (плюс свой вариант четвертого).
+
+### Проблемы параллельности
+
+Перед изучением уровней изоляции, рассмотрим проблемы, которые они предотвращают:
+
+**1. Dirty Read (Грязное чтение)**
+- Чтение незафиксированных изменений другой транзакции
+
+**2. Non-Repeatable Read (Неповторяющееся чтение)**
+- Повторное чтение возвращает разные данные из-за изменений другой транзакции
+
+**3. Phantom Read (Фантомное чтение)**
+- Повторный запрос возвращает разный набор строк из-за вставок/удалений другой транзакции
+
+**4. Serialization Anomaly (Аномалия сериализации)**
+- Результат параллельного выполнения транзакций отличается от любого последовательного выполнения
+
+### Таблица уровней изоляции
+
+| Уровень изоляции | Dirty Read | Non-Repeatable Read | Phantom Read | Serialization Anomaly |
+|------------------|------------|---------------------|--------------|----------------------|
+| Read Uncommitted | Возможно*  | Возможно            | Возможно     | Возможно             |
+| Read Committed   | Невозможно | Возможно            | Возможно     | Возможно             |
+| Repeatable Read  | Невозможно | Невозможно          | Невозможно** | Возможно             |
+| Serializable     | Невозможно | Невозможно          | Невозможно   | Невозможно           |
+
+\* PostgreSQL не имеет настоящего Read Uncommitted (ведет себя как Read Committed)  
+\*\* PostgreSQL предотвращает Phantom Read даже на Repeatable Read
+
+## Read Committed (по умолчанию)
+
+### Описание
+
+Read Committed — уровень изоляции по умолчанию в PostgreSQL. Транзакция видит только зафиксированные изменения других транзакций.
+
+**Гарантии:**
+- Нет грязных чтений
+- Каждый запрос видит снимок на момент начала запроса
+
+**Проблемы:**
+- Non-repeatable reads
+- Phantom reads
+
+### Демонстрация Non-Repeatable Read
+
+```sql
+-- Подготовка
+CREATE TABLE inventory (
+    product_id INTEGER PRIMARY KEY,
+    quantity INTEGER
+);
+
+INSERT INTO inventory VALUES (1, 100);
+
+-- Сессия 1: Read Committed (по умолчанию)
+BEGIN;
+    SELECT quantity FROM inventory WHERE product_id = 1;
+    -- Результат: 100
+    
+    -- Пауза... в это время Сессия 2 изменяет данные
+    
+    SELECT quantity FROM inventory WHERE product_id = 1;
+    -- Результат: 50 (ИЗМЕНИЛОСЬ!)
+    -- Это Non-Repeatable Read
+COMMIT;
+
+-- Сессия 2: Изменяем данные
+BEGIN;
+    UPDATE inventory SET quantity = 50 WHERE product_id = 1;
+COMMIT;
+```
+
+### Демонстрация Phantom Read
+
+```sql
+-- Подготовка
+CREATE TABLE orders (
+    order_id SERIAL PRIMARY KEY,
+    customer_id INTEGER,
+    amount NUMERIC(10, 2)
+);
+
+INSERT INTO orders (customer_id, amount) VALUES (1, 100.00);
+
+-- Сессия 1: Read Committed
+BEGIN;
+    SELECT COUNT(*) FROM orders WHERE customer_id = 1;
+    -- Результат: 1
+    
+    -- Пауза... Сессия 2 добавляет запись
+    
+    SELECT COUNT(*) FROM orders WHERE customer_id = 1;
+    -- Результат: 2 (ИЗМЕНИЛОСЬ!)
+    -- Появилась "фантомная" строка
+COMMIT;
+
+-- Сессия 2: Добавляем запись
+BEGIN;
+    INSERT INTO orders (customer_id, amount) VALUES (1, 200.00);
+COMMIT;
+```
+
+### Когда использовать Read Committed
+
+```sql
+-- Read Committed подходит для большинства приложений
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+-- Примеры использования:
+
+-- 1. Простые операции чтения
+BEGIN;
+    SELECT * FROM products WHERE category = 'Electronics';
+COMMIT;
+
+-- 2. Операции, не требующие согласованности между запросами
+BEGIN;
+    UPDATE products SET stock = stock - 1 WHERE product_id = 123;
+    INSERT INTO order_items (product_id, quantity) VALUES (123, 1);
+COMMIT;
+
+-- 3. Короткие транзакции
+BEGIN;
+    INSERT INTO logs (message, created_at) VALUES ('User login', NOW());
+COMMIT;
+```
+
+## Repeatable Read
+
+### Описание
+
+Repeatable Read предоставляет согласованный снимок данных на момент начала **первого** запроса в транзакции.
+
+**Гарантии:**
+- Нет грязных чтений
+- Нет неповторяющихся чтений
+- Нет фантомных чтений (в PostgreSQL!)
+
+**Проблемы:**
+- Serialization anomaly
+- Write skew
+
+### Демонстрация согласованного снимка
+
+```sql
+-- Подготовка
+CREATE TABLE account_balances (
+    account_id INTEGER PRIMARY KEY,
+    balance NUMERIC(10, 2)
+);
+
+INSERT INTO account_balances VALUES 
+    (1, 1000.00),
+    (2, 500.00);
+
+-- Сессия 1: Repeatable Read
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    SELECT balance FROM account_balances WHERE account_id = 1;
+    -- Результат: 1000.00
+    
+    -- Пауза... Сессия 2 изменяет данные
+    
+    SELECT balance FROM account_balances WHERE account_id = 1;
+    -- Результат: 1000.00 (НЕ ИЗМЕНИЛОСЬ!)
+    -- Видим снимок на начало транзакции
+    
+    -- Проверяем вторую запись
+    SELECT balance FROM account_balances WHERE account_id = 2;
+    -- Результат: 500.00 (тоже старое значение)
+COMMIT;
+
+-- Сессия 2: Изменяем данные
+BEGIN;
+    UPDATE account_balances SET balance = 1500.00 WHERE account_id = 1;
+COMMIT;
+
+-- После COMMIT в Сессии 1, новая транзакция увидит новые данные
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    SELECT balance FROM account_balances WHERE account_id = 1;
+    -- Результат: 1500.00
+COMMIT;
+```
+
+### Обработка конфликтов при UPDATE
+
+```sql
+-- Сессия 1: Repeatable Read
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    SELECT balance FROM account_balances WHERE account_id = 1;
+    -- Результат: 1000.00
+    
+    -- Пауза...
+    
+    UPDATE account_balances SET balance = balance - 100 WHERE account_id = 1;
+    -- ОШИБКА: could not serialize access due to concurrent update
+ROLLBACK;
+
+-- Сессия 2: Параллельное изменение
+BEGIN;
+    UPDATE account_balances SET balance = balance + 500 WHERE account_id = 1;
+COMMIT;
+
+-- PostgreSQL обнаруживает конфликт и откатывает одну из транзакций
+-- Приложение должно повторить транзакцию
+```
+
+### Retry логика для Repeatable Read
+
+```sql
+-- Пример функции с автоматическим повтором
+CREATE OR REPLACE FUNCTION transfer_money(
+    from_account INTEGER,
+    to_account INTEGER,
+    amount NUMERIC
+) RETURNS BOOLEAN AS $$
+DECLARE
+    max_retries INTEGER := 3;
+    retry_count INTEGER := 0;
+    success BOOLEAN := FALSE;
+BEGIN
+    WHILE retry_count < max_retries AND NOT success LOOP
+        BEGIN
+            -- Устанавливаем уровень изоляции
+            SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+            
+            -- Проверяем баланс
+            IF (SELECT balance FROM account_balances WHERE account_id = from_account) < amount THEN
+                RAISE EXCEPTION 'Insufficient funds';
+            END IF;
+            
+            -- Выполняем перевод
+            UPDATE account_balances 
+            SET balance = balance - amount 
+            WHERE account_id = from_account;
+            
+            UPDATE account_balances 
+            SET balance = balance + amount 
+            WHERE account_id = to_account;
+            
+            success := TRUE;
+            
+        EXCEPTION WHEN serialization_failure THEN
+            retry_count := retry_count + 1;
+            RAISE NOTICE 'Serialization failure, retry % of %', retry_count, max_retries;
+            
+            IF retry_count >= max_retries THEN
+                RAISE EXCEPTION 'Max retries exceeded';
+            END IF;
+        END;
+    END LOOP;
+    
+    RETURN success;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Использование
+SELECT transfer_money(1, 2, 100.00);
+```
+
+### Когда использовать Repeatable Read
+
+```sql
+-- Repeatable Read подходит для:
+
+-- 1. Финансовые операции
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    -- Проверяем баланс
+    SELECT balance FROM accounts WHERE account_id = 1;
+    
+    -- Выполняем расчеты
+    -- ...
+    
+    -- Применяем изменения
+    UPDATE accounts SET balance = balance - 100 WHERE account_id = 1;
+COMMIT;
+
+-- 2. Отчеты и аналитика (нужен согласованный снимок)
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    SELECT 
+        DATE(order_date) as date,
+        SUM(amount) as daily_total
+    FROM orders
+    WHERE order_date >= CURRENT_DATE - INTERVAL '30 days'
+    GROUP BY DATE(order_date);
+COMMIT;
+
+-- 3. Batch операции
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    -- Обрабатываем все неотправленные заказы
+    UPDATE orders 
+    SET status = 'processing' 
+    WHERE status = 'pending';
+    
+    -- Создаем записи в другой таблице
+    INSERT INTO shipments (order_id, created_at)
+    SELECT id, NOW() FROM orders WHERE status = 'processing';
+COMMIT;
+```
+
+## Serializable
+
+### Описание
+
+Serializable — самый строгий уровень изоляции. Гарантирует, что параллельное выполнение транзакций эквивалентно некоторому последовательному выполнению.
+
+**Гарантии:**
+- Все гарантии Repeatable Read
+- Нет anomaly сериализации
+- Полная изоляция транзакций
+
+**Цена:**
+- Возможны больше serialization failures
+- Может быть медленнее
+
+### Демонстрация Write Skew
+
+Write Skew — это аномалия, которую предотвращает только Serializable.
+
+```sql
+-- Подготовка: дежурство врачей
+CREATE TABLE doctors_schedule (
+    doctor_id INTEGER PRIMARY KEY,
+    on_call BOOLEAN
+);
+
+INSERT INTO doctors_schedule VALUES 
+    (1, true),
+    (2, true);
+
+-- Правило: хотя бы один врач должен быть на дежурстве
+
+-- Сессия 1: Repeatable Read
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    -- Проверяем, есть ли другие врачи на дежурстве
+    SELECT COUNT(*) FROM doctors_schedule WHERE on_call = true;
+    -- Результат: 2 (врач 1 и врач 2)
+    
+    -- Врач 1 решает уйти
+    UPDATE doctors_schedule SET on_call = false WHERE doctor_id = 1;
+    -- Кажется OK, ведь врач 2 на дежурстве
+COMMIT;
+
+-- Сессия 2: Repeatable Read (одновременно с Сессией 1)
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    -- Проверяем, есть ли другие врачи на дежурстве
+    SELECT COUNT(*) FROM doctors_schedule WHERE on_call = true;
+    -- Результат: 2 (врач 1 и врач 2)
+    
+    -- Врач 2 решает уйти
+    UPDATE doctors_schedule SET on_call = false WHERE doctor_id = 2;
+    -- Кажется OK, ведь врач 1 на дежурстве
+COMMIT;
+
+-- ПРОБЛЕМА! Теперь НЕТ врачей на дежурстве!
+SELECT * FROM doctors_schedule;
+/*
+ doctor_id | on_call 
+-----------+---------
+         1 | f
+         2 | f
+*/
+
+-- Это Write Skew - каждая транзакция видит согласованное состояние,
+-- но результат их параллельного выполнения невалиден
+```
+
+### Решение с Serializable
+
+```sql
+-- Сбросим данные
+UPDATE doctors_schedule SET on_call = true;
+
+-- Сессия 1: Serializable
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+    SELECT COUNT(*) FROM doctors_schedule WHERE on_call = true;
+    -- Результат: 2
+    
+    UPDATE doctors_schedule SET on_call = false WHERE doctor_id = 1;
+COMMIT;
+
+-- Сессия 2: Serializable (одновременно)
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+    SELECT COUNT(*) FROM doctors_schedule WHERE on_call = true;
+    -- Результат: 2
+    
+    UPDATE doctors_schedule SET on_call = false WHERE doctor_id = 2;
+    -- При COMMIT получим ошибку:
+    -- ERROR: could not serialize access due to read/write dependencies
+ROLLBACK;
+
+-- PostgreSQL обнаружил конфликт и откатил одну транзакцию
+-- Приложение должно повторить транзакцию
+```
+
+### Serializable Snapshot Isolation (SSI)
+
+PostgreSQL использует алгоритм SSI для реализации Serializable уровня.
+
+```sql
+-- SSI отслеживает зависимости чтения-записи между транзакциями
+
+-- Пример: бронирование мест
+CREATE TABLE seats (
+    seat_number INTEGER PRIMARY KEY,
+    reserved_by INTEGER
+);
+
+INSERT INTO seats (seat_number, reserved_by) VALUES 
+    (1, NULL),
+    (2, NULL),
+    (3, NULL);
+
+-- Сессия 1: Клиент 101 бронирует место
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+    -- Читаем свободные места
+    SELECT seat_number FROM seats WHERE reserved_by IS NULL;
+    -- Видим места 1, 2, 3
+    
+    -- Выбираем место 1
+    UPDATE seats SET reserved_by = 101 WHERE seat_number = 1;
+COMMIT;
+
+-- Сессия 2: Клиент 102 одновременно бронирует место
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+    -- Читаем свободные места
+    SELECT seat_number FROM seats WHERE reserved_by IS NULL;
+    -- Видим места 1, 2, 3 (снимок на начало транзакции)
+    
+    -- Пытаемся забронировать место 1
+    UPDATE seats SET reserved_by = 102 WHERE seat_number = 1;
+    -- При COMMIT:
+    -- ERROR: could not serialize access due to concurrent update
+ROLLBACK;
+
+-- SSI обнаружил конфликт и предотвратил двойное бронирование
+```
+
+### Оптимизация Serializable
+
+```sql
+-- 1. Использовать SELECT FOR UPDATE для явных блокировок
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+    -- Явно блокируем строки
+    SELECT * FROM seats 
+    WHERE seat_number = 1 
+    FOR UPDATE;
+    
+    UPDATE seats SET reserved_by = 101 WHERE seat_number = 1;
+COMMIT;
+
+-- 2. Минимизировать время транзакции
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+    -- Быстрое чтение
+    SELECT balance FROM accounts WHERE account_id = 1;
+    
+    -- Минимум вычислений внутри транзакции
+    
+    -- Быстрая запись
+    UPDATE accounts SET balance = balance - 100 WHERE account_id = 1;
+COMMIT;
+
+-- 3. Использовать Serializable только где необходимо
+-- Для большинства операций достаточно Read Committed
+-- Serializable только для критичных операций
+```
+
+## Блокировки в PostgreSQL
+
+### Типы блокировок
+
+PostgreSQL использует различные типы блокировок для управления параллельным доступом.
+
+#### Блокировки таблиц
+
+```sql
+-- Просмотр текущих блокировок
+SELECT 
+    locktype,
+    relation::regclass,
+    mode,
+    granted,
+    pid
+FROM pg_locks
+WHERE relation IS NOT NULL;
+
+-- ACCESS SHARE - для SELECT
+BEGIN;
+    SELECT * FROM products;
+    -- Устанавливает ACCESS SHARE lock
+COMMIT;
+
+-- ROW SHARE - для SELECT FOR UPDATE
+BEGIN;
+    SELECT * FROM products WHERE id = 1 FOR UPDATE;
+    -- Устанавливает ROW SHARE lock на таблицу
+    -- и блокирует конкретную строку
+COMMIT;
+
+-- ROW EXCLUSIVE - для INSERT, UPDATE, DELETE
+BEGIN;
+    UPDATE products SET price = 100 WHERE id = 1;
+    -- Устанавливает ROW EXCLUSIVE lock
+COMMIT;
+
+-- EXCLUSIVE - блокирует все кроме ACCESS SHARE
+BEGIN;
+    LOCK TABLE products IN EXCLUSIVE MODE;
+    -- Блокирует изменения, но разрешает чтение
+COMMIT;
+
+-- ACCESS EXCLUSIVE - полная блокировка
+BEGIN;
+    LOCK TABLE products IN ACCESS EXCLUSIVE MODE;
+    -- Блокирует все операции (используется ALTER TABLE, DROP TABLE)
+COMMIT;
+```
+
+#### Блокировки строк
+
+```sql
+-- FOR UPDATE - эксклюзивная блокировка строки
+BEGIN;
+    SELECT * FROM products WHERE id = 1 FOR UPDATE;
+    -- Другие транзакции не могут изменить или блокировать эту строку
+    
+    UPDATE products SET stock = stock - 1 WHERE id = 1;
+COMMIT;
+
+-- FOR NO KEY UPDATE - блокировка без блокировки ключей
+BEGIN;
+    SELECT * FROM products WHERE id = 1 FOR NO KEY UPDATE;
+    -- Позволяет другим транзакциям создавать FK на эту строку
+COMMIT;
+
+-- FOR SHARE - разделяемая блокировка
+BEGIN;
+    SELECT * FROM products WHERE id = 1 FOR SHARE;
+    -- Другие могут читать и устанавливать FOR SHARE,
+    -- но не могут изменять
+COMMIT;
+
+-- FOR KEY SHARE - слабая разделяемая блокировка
+BEGIN;
+    SELECT * FROM products WHERE id = 1 FOR KEY SHARE;
+    -- Предотвращает удаление и изменение ключей
+COMMIT;
+```
+
+### Deadlocks (Взаимные блокировки)
+
+```sql
+-- Подготовка
+CREATE TABLE resources (
+    resource_id INTEGER PRIMARY KEY,
+    value INTEGER
+);
+
+INSERT INTO resources VALUES (1, 100), (2, 200);
+
+-- Сессия 1
+BEGIN;
+    UPDATE resources SET value = value + 10 WHERE resource_id = 1;
+    -- Блокировка ресурса 1
+    
+    -- Пауза...
+    
+    UPDATE resources SET value = value + 20 WHERE resource_id = 2;
+    -- Ждет освобождения ресурса 2
+COMMIT;
+
+-- Сессия 2 (одновременно)
+BEGIN;
+    UPDATE resources SET value = value + 30 WHERE resource_id = 2;
+    -- Блокировка ресурса 2
+    
+    -- Пауза...
+    
+    UPDATE resources SET value = value + 40 WHERE resource_id = 1;
+    -- Ждет освобождения ресурса 1
+    
+    -- DEADLOCK DETECTED!
+    -- ERROR: deadlock detected
+ROLLBACK;
+
+-- PostgreSQL автоматически обнаруживает deadlock и откатывает одну транзакцию
+```
+
+### Предотвращение Deadlock
+
+```sql
+-- 1. Всегда блокировать ресурсы в одном порядке
+-- ПЛОХО:
+-- Сессия 1: блокирует A, потом B
+-- Сессия 2: блокирует B, потом A
+
+-- ХОРОШО:
+-- Обе сессии: блокируют сначала A, потом B
+BEGIN;
+    UPDATE resources SET value = value + 10 WHERE resource_id = 1; -- Всегда сначала 1
+    UPDATE resources SET value = value + 20 WHERE resource_id = 2; -- Потом 2
+COMMIT;
+
+-- 2. Использовать LOCK TABLE для явной блокировки в начале
+BEGIN;
+    LOCK TABLE resources IN EXCLUSIVE MODE;
+    -- Получаем все блокировки сразу
+    UPDATE resources SET value = value + 10 WHERE resource_id = 1;
+    UPDATE resources SET value = value + 20 WHERE resource_id = 2;
+COMMIT;
+
+-- 3. Использовать NOWAIT или LOCK_TIMEOUT
+BEGIN;
+    -- Не ждать блокировки, сразу вернуть ошибку
+    SELECT * FROM resources WHERE resource_id = 1 FOR UPDATE NOWAIT;
+COMMIT;
+
+-- Или с таймаутом
+SET lock_timeout = '2s';
+BEGIN;
+    SELECT * FROM resources WHERE resource_id = 1 FOR UPDATE;
+    -- Если блокировка не получена за 2 секунды, будет ошибка
+COMMIT;
+
+-- 4. Минимизировать длительность транзакций
+-- ПЛОХО: долгие вычисления внутри транзакции
+BEGIN;
+    SELECT * FROM orders WHERE status = 'pending' FOR UPDATE;
+    -- Долгие вычисления (опасно!)
+    -- ... 10 секунд обработки ...
+    UPDATE orders SET status = 'processed';
+COMMIT;
+
+-- ХОРОШО: вычисления вне транзакции
+SELECT * FROM orders WHERE status = 'pending';
+-- Вычисления вне транзакции
+-- ... 10 секунд обработки ...
+BEGIN;
+    UPDATE orders SET status = 'processed' WHERE id IN (...);
+COMMIT;
+```
+
+### Мониторинг блокировок
+
+```sql
+-- Просмотр всех активных блокировок
+SELECT 
+    blocked_locks.pid AS blocked_pid,
+    blocked_activity.usename AS blocked_user,
+    blocking_locks.pid AS blocking_pid,
+    blocking_activity.usename AS blocking_user,
+    blocked_activity.query AS blocked_statement,
+    blocking_activity.query AS blocking_statement,
+    blocked_activity.application_name AS blocked_application
+FROM pg_catalog.pg_locks blocked_locks
+JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked_activity.pid = blocked_locks.pid
+JOIN pg_catalog.pg_locks blocking_locks 
+    ON blocking_locks.locktype = blocked_locks.locktype
+    AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
+    AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+    AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+    AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+    AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+    AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+    AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+    AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+    AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+    AND blocking_locks.pid != blocked_locks.pid
+JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
+WHERE NOT blocked_locks.granted;
+
+-- Упрощенный запрос: кто кого блокирует
+SELECT 
+    activity.pid,
+    activity.usename,
+    activity.query,
+    blocking.pid AS blocking_pid,
+    blocking.query AS blocking_query
+FROM pg_stat_activity AS activity
+JOIN pg_stat_activity AS blocking ON blocking.pid = ANY(pg_blocking_pids(activity.pid))
+WHERE activity.pid != blocking.pid;
+
+-- Завершение блокирующего процесса (используйте осторожно!)
+SELECT pg_terminate_backend(blocking_pid);
+```
+
+## Savepoints (Точки сохранения)
+
+### Основы Savepoints
+
+Savepoints позволяют откатить часть транзакции без отката всей транзакции.
+
+```sql
+-- Создание таблицы для демонстрации
+CREATE TABLE bank_transactions (
+    id SERIAL PRIMARY KEY,
+    account_id INTEGER,
+    amount NUMERIC(10, 2),
+    transaction_type VARCHAR(20),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Использование savepoints
+BEGIN;
+    -- Первая операция
+    INSERT INTO bank_transactions (account_id, amount, transaction_type)
+    VALUES (1, 100.00, 'deposit');
+    
+    -- Создаем точку сохранения
+    SAVEPOINT sp1;
+    
+    -- Вторая операция
+    INSERT INTO bank_transactions (account_id, amount, transaction_type)
+    VALUES (2, 50.00, 'withdrawal');
+    
+    -- Создаем еще одну точку сохранения
+    SAVEPOINT sp2;
+    
+    -- Третья операция (с ошибкой)
+    INSERT INTO bank_transactions (account_id, amount, transaction_type)
+    VALUES (3, -999.00, 'invalid');  -- Предположим, это невалидно
+    
+    -- Откатываем до sp2 (отменяется только третья операция)
+    ROLLBACK TO SAVEPOINT sp2;
+    
+    -- Можем продолжить транзакцию
+    INSERT INTO bank_transactions (account_id, amount, transaction_type)
+    VALUES (3, 75.00, 'deposit');
+    
+COMMIT;
+
+-- Результат: все операции кроме третьей (invalid) будут сохранены
+SELECT * FROM bank_transactions;
+```
+
+### Вложенные Savepoints
+
+```sql
+BEGIN;
+    INSERT INTO bank_transactions (account_id, amount, transaction_type)
+    VALUES (1, 100.00, 'deposit');
+    
+    SAVEPOINT level1;
+        INSERT INTO bank_transactions (account_id, amount, transaction_type)
+        VALUES (2, 200.00, 'deposit');
+        
+        SAVEPOINT level2;
+            INSERT INTO bank_transactions (account_id, amount, transaction_type)
+            VALUES (3, 300.00, 'deposit');
+            
+            SAVEPOINT level3;
+                INSERT INTO bank_transactions (account_id, amount, transaction_type)
+                VALUES (4, 400.00, 'deposit');
+            
+            -- Откат до level3 (отменяется запись для account 4)
+            ROLLBACK TO SAVEPOINT level3;
+        
+        -- Откат до level2 (отменяется запись для account 3)
+        ROLLBACK TO SAVEPOINT level2;
+    
+    -- Записи для account 1 и 2 остаются
+COMMIT;
+```
+
+### Практическое применение Savepoints
+
+```sql
+-- Пример: импорт данных с обработкой ошибок
+CREATE OR REPLACE FUNCTION import_transactions(data JSON[])
+RETURNS TABLE(success_count INTEGER, error_count INTEGER) AS $
+DECLARE
+    record JSON;
+    success_cnt INTEGER := 0;
+    error_cnt INTEGER := 0;
+BEGIN
+    -- Начинаем транзакцию уже начата в вызывающем коде
+    
+    FOREACH record IN ARRAY data LOOP
+        BEGIN
+            -- Создаем savepoint для каждой записи
+            SAVEPOINT import_record;
+            
+            INSERT INTO bank_transactions (account_id, amount, transaction_type)
+            VALUES (
+                (record->>'account_id')::INTEGER,
+                (record->>'amount')::NUMERIC,
+                record->>'transaction_type'
+            );
+            
+            success_cnt := success_cnt + 1;
+            
+        EXCEPTION WHEN OTHERS THEN
+            -- Откатываем только эту запись
+            ROLLBACK TO SAVEPOINT import_record;
+            error_cnt := error_cnt + 1;
+            RAISE NOTICE 'Error importing record: %', record;
+        END;
+    END LOOP;
+    
+    RETURN QUERY SELECT success_cnt, error_cnt;
+END;
+$ LANGUAGE plpgsql;
+
+-- Использование
+BEGIN;
+    SELECT * FROM import_transactions(ARRAY[
+        '{"account_id": 1, "amount": 100, "transaction_type": "deposit"}'::JSON,
+        '{"account_id": 2, "amount": -999, "transaction_type": "invalid"}'::JSON,
+        '{"account_id": 3, "amount": 200, "transaction_type": "deposit"}'::JSON
+    ]);
+    -- Результат: success_count = 2, error_count = 1
+COMMIT;
+```
+
+## Two-Phase Commit (Двухфазная фиксация)
+
+### Концепция 2PC
+
+Two-Phase Commit используется для распределенных транзакций, охватывающих несколько баз данных.
+
+```sql
+-- Фаза 1: PREPARE (подготовка)
+BEGIN;
+    UPDATE accounts SET balance = balance - 100 WHERE account_id = 1;
+    UPDATE accounts SET balance = balance + 100 WHERE account_id = 2;
+    
+    -- Подготавливаем транзакцию
+    PREPARE TRANSACTION 'transfer_tx_001';
+
+-- В этот момент транзакция подготовлена, но не зафиксирована
+-- Данные заблокированы, но не видны другим транзакциям
+
+-- Просмотр подготовленных транзакций
+SELECT * FROM pg_prepared_xacts;
+
+-- Фаза 2a: COMMIT (фиксация)
+COMMIT PREPARED 'transfer_tx_001';
+
+-- Или Фаза 2b: ROLLBACK (откат)
+-- ROLLBACK PREPARED 'transfer_tx_001';
+```
+
+### Пример распределенной транзакции
+
+```sql
+-- База данных 1: Orders DB
+BEGIN;
+    INSERT INTO orders (customer_id, amount) VALUES (123, 500.00);
+    PREPARE TRANSACTION 'order_tx_456';
+
+-- База данных 2: Inventory DB (другая БД)
+BEGIN;
+    UPDATE inventory SET quantity = quantity - 1 WHERE product_id = 789;
+    PREPARE TRANSACTION 'order_tx_456';
+
+-- Координатор проверяет успех обеих фаз
+-- Если обе успешны:
+-- В Orders DB:
+COMMIT PREPARED 'order_tx_456';
+-- В Inventory DB:
+COMMIT PREPARED 'order_tx_456';
+
+-- Если хотя бы одна не удалась:
+-- ROLLBACK PREPARED 'order_tx_456' в обеих БД
+```
+
+### Очистка зависших подготовленных транзакций
+
+```sql
+-- Поиск старых подготовленных транзакций
+SELECT 
+    gid,
+    prepared,
+    owner,
+    database,
+    AGE(NOW(), prepared) as age
+FROM pg_prepared_xacts
+WHERE prepared < NOW() - INTERVAL '1 hour';
+
+-- Откат зависших транзакций
+DO $
+DECLARE
+    tx RECORD;
+BEGIN
+    FOR tx IN 
+        SELECT gid FROM pg_prepared_xacts 
+        WHERE prepared < NOW() - INTERVAL '1 hour'
+    LOOP
+        EXECUTE format('ROLLBACK PREPARED %L', tx.gid);
+        RAISE NOTICE 'Rolled back prepared transaction: %', tx.gid;
+    END LOOP;
+END $;
+```
+
+## Практические паттерны и best practices
+
+### Паттерн 1: Оптимистичная блокировка
+
+```sql
+-- Добавляем версионную колонку
+CREATE TABLE products_versioned (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100),
+    price NUMERIC(10, 2),
+    stock INTEGER,
+    version INTEGER DEFAULT 1
+);
+
+-- Оптимистичное обновление
+BEGIN;
+    -- Читаем текущую версию
+    SELECT id, price, stock, version 
+    FROM products_versioned 
+    WHERE id = 1;
+    -- Предположим: version = 5
+    
+    -- В приложении делаем вычисления...
+    
+    -- Обновляем только если версия не изменилась
+    UPDATE products_versioned 
+    SET price = 100.00, 
+        stock = stock - 1,
+        version = version + 1
+    WHERE id = 1 AND version = 5;
+    
+    -- Проверяем, обновилась ли строка
+    GET DIAGNOSTICS affected_rows = ROW_COUNT;
+    
+    IF affected_rows = 0 THEN
+        RAISE EXCEPTION 'Concurrent modification detected';
+    END IF;
+COMMIT;
+```
+
+### Паттерн 2: Пессимистичная блокировка
+
+```sql
+-- Блокируем строки сразу
+BEGIN;
+    -- Получаем эксклюзивную блокировку
+    SELECT id, stock 
+    FROM products 
+    WHERE id = 1 
+    FOR UPDATE;
+    
+    -- Теперь никто не может изменить эту строку
+    -- Безопасно выполняем операцию
+    UPDATE products 
+    SET stock = stock - 1 
+    WHERE id = 1;
+COMMIT;
+
+-- С SKIP LOCKED для обработки очередей
+BEGIN;
+    -- Получаем первую доступную задачу
+    SELECT id, task_data
+    FROM job_queue
+    WHERE status = 'pending'
+    ORDER BY created_at
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED;
+    
+    -- Если строка заблокирована другим процессом, пропускаем её
+    -- Обрабатываем задачу...
+    
+    UPDATE job_queue 
+    SET status = 'completed' 
+    WHERE id = retrieved_id;
+COMMIT;
+```
+
+### Паттерн 3: Idempotent операции
+
+```sql
+-- Создаем таблицу для отслеживания обработанных операций
+CREATE TABLE processed_operations (
+    operation_id VARCHAR(100) PRIMARY KEY,
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    result JSONB
+);
+
+-- Идемпотентная функция
+CREATE OR REPLACE FUNCTION process_payment(
+    payment_id VARCHAR(100),
+    amount NUMERIC
+) RETURNS JSONB AS $
+DECLARE
+    result JSONB;
+BEGIN
+    -- Проверяем, обрабатывалась ли уже эта операция
+    SELECT result INTO result
+    FROM processed_operations
+    WHERE operation_id = payment_id;
+    
+    IF FOUND THEN
+        -- Операция уже обработана, возвращаем сохраненный результат
+        RETURN result;
+    END IF;
+    
+    -- Обрабатываем платеж
+    BEGIN
+        -- Выполняем операцию
+        UPDATE accounts SET balance = balance - amount WHERE account_id = 1;
+        
+        -- Сохраняем результат
+        result := jsonb_build_object(
+            'status', 'success',
+            'payment_id', payment_id,
+            'amount', amount,
+            'processed_at', NOW()
+        );
+        
+        INSERT INTO processed_operations (operation_id, result)
+        VALUES (payment_id, result);
+        
+        RETURN result;
+        
+    EXCEPTION WHEN OTHERS THEN
+        result := jsonb_build_object(
+            'status', 'error',
+            'error', SQLERRM
+        );
+        RETURN result;
+    END;
+END;
+$ LANGUAGE plpgsql;
+
+-- Безопасный вызов (можно повторять)
+SELECT process_payment('PAY-123-456', 100.00);
+SELECT process_payment('PAY-123-456', 100.00);  -- Вернет тот же результат
+```
+
+### Паттерн 4: Saga Pattern для длинных транзакций
+
+```sql
+-- Вместо одной длинной транзакции используем серию коротких с компенсациями
+
+-- Таблица для отслеживания состояния saga
+CREATE TABLE order_saga (
+    saga_id UUID PRIMARY KEY,
+    order_id INTEGER,
+    state VARCHAR(50),
+    current_step INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE order_saga_steps (
+    id SERIAL PRIMARY KEY,
+    saga_id UUID REFERENCES order_saga(saga_id),
+    step_number INTEGER,
+    step_name VARCHAR(50),
+    status VARCHAR(20),  -- pending, completed, failed, compensated
+    executed_at TIMESTAMP
+);
+
+-- Шаг 1: Резервирование товара
+CREATE OR REPLACE FUNCTION reserve_inventory(
+    p_saga_id UUID,
+    p_product_id INTEGER,
+    p_quantity INTEGER
+) RETURNS BOOLEAN AS $
+BEGIN
+    BEGIN
+        UPDATE inventory 
+        SET reserved = reserved + p_quantity 
+        WHERE product_id = p_product_id 
+            AND (quantity - reserved) >= p_quantity;
+        
+        IF NOT FOUND THEN
+            RETURN FALSE;
+        END IF;
+        
+        INSERT INTO order_saga_steps (saga_id, step_number, step_name, status, executed_at)
+        VALUES (p_saga_id, 1, 'reserve_inventory', 'completed', NOW());
+        
+        RETURN TRUE;
+    EXCEPTION WHEN OTHERS THEN
+        RETURN FALSE;
+    END;
+END;
+$ LANGUAGE plpgsql;
+
+-- Компенсация для шага 1
+CREATE OR REPLACE FUNCTION compensate_reserve_inventory(
+    p_saga_id UUID,
+    p_product_id INTEGER,
+    p_quantity INTEGER
+) RETURNS BOOLEAN AS $
+BEGIN
+    UPDATE inventory 
+    SET reserved = reserved - p_quantity 
+    WHERE product_id = p_product_id;
+    
+    UPDATE order_saga_steps 
+    SET status = 'compensated' 
+    WHERE saga_id = p_saga_id AND step_number = 1;
+    
+    RETURN TRUE;
+END;
+$ LANGUAGE plpgsql;
+
+-- Шаг 2: Авторизация платежа
+CREATE OR REPLACE FUNCTION authorize_payment(
+    p_saga_id UUID,
+    p_customer_id INTEGER,
+    p_amount NUMERIC
+) RETURNS BOOLEAN AS $
+BEGIN
+    -- Логика авторизации платежа
+    -- ...
+    
+    INSERT INTO order_saga_steps (saga_id, step_number, step_name, status, executed_at)
+    VALUES (p_saga_id, 2, 'authorize_payment', 'completed', NOW());
+    
+    RETURN TRUE;
+EXCEPTION WHEN OTHERS THEN
+    RETURN FALSE;
+END;
+$ LANGUAGE plpgsql;
+
+-- Оркестратор saga
+CREATE OR REPLACE FUNCTION execute_order_saga(
+    p_order_id INTEGER,
+    p_product_id INTEGER,
+    p_quantity INTEGER,
+    p_customer_id INTEGER,
+    p_amount NUMERIC
+) RETURNS BOOLEAN AS $
+DECLARE
+    v_saga_id UUID;
+    v_success BOOLEAN;
+BEGIN
+    -- Создаем saga
+    v_saga_id := gen_random_uuid();
+    
+    INSERT INTO order_saga (saga_id, order_id, state, current_step)
+    VALUES (v_saga_id, p_order_id, 'in_progress', 0);
+    
+    -- Шаг 1: Резервирование
+    v_success := reserve_inventory(v_saga_id, p_product_id, p_quantity);
+    
+    IF NOT v_success THEN
+        UPDATE order_saga SET state = 'failed' WHERE saga_id = v_saga_id;
+        RETURN FALSE;
+    END IF;
+    
+    -- Шаг 2: Платеж
+    v_success := authorize_payment(v_saga_id, p_customer_id, p_amount);
+    
+    IF NOT v_success THEN
+        -- Компенсация шага 1
+        PERFORM compensate_reserve_inventory(v_saga_id, p_product_id, p_quantity);
+        UPDATE order_saga SET state = 'failed' WHERE saga_id = v_saga_id;
+        RETURN FALSE;
+    END IF;
+    
+    -- Шаг 3: Создание заказа
+    -- ... дополнительные шаги
+    
+    UPDATE order_saga SET state = 'completed' WHERE saga_id = v_saga_id;
+    RETURN TRUE;
+END;
+$ LANGUAGE plpgsql;
+```
+
+### Паттерн 5: Advisory Locks для координации
+
+```sql
+-- Advisory locks - логические блокировки на уровне приложения
+-- Не связаны с конкретными строками в таблице
+
+-- Получение эксклюзивной advisory lock
+BEGIN;
+    -- Блокируем по числовому ID (например, user_id)
+    SELECT pg_advisory_lock(12345);
+    
+    -- Критическая секция - только одна транзакция может быть здесь
+    -- Например: обработка платежа для пользователя 12345
+    
+    -- Освобождение блокировки
+    SELECT pg_advisory_unlock(12345);
+COMMIT;
+
+-- Неблокирующий вариант
+SELECT pg_try_advisory_lock(12345);
+-- Возвращает true если блокировка получена, false если уже заблокировано
+
+-- Advisory lock на уровне сессии (автоматически освобождается при отключении)
+SELECT pg_advisory_lock(12345);
+-- ... работа ...
+SELECT pg_advisory_unlock(12345);
+
+-- Advisory lock на уровне транзакции
+BEGIN;
+    SELECT pg_advisory_xact_lock(12345);
+    -- Автоматически освобождается при COMMIT/ROLLBACK
+COMMIT;
+
+-- Пример: предотвращение одновременной обработки задач
+CREATE OR REPLACE FUNCTION process_job(job_id INTEGER)
+RETURNS BOOLEAN AS $
+BEGIN
+    -- Пытаемся получить блокировку
+    IF NOT pg_try_advisory_lock(job_id) THEN
+        -- Задача уже обрабатывается
+        RAISE NOTICE 'Job % is already being processed', job_id;
+        RETURN FALSE;
+    END IF;
+    
+    BEGIN
+        -- Обрабатываем задачу
+        UPDATE jobs SET status = 'processing' WHERE id = job_id;
+        
+        -- Долгая обработка...
+        PERFORM pg_sleep(5);
+        
+        UPDATE jobs SET status = 'completed' WHERE id = job_id;
+        
+        RETURN TRUE;
+    FINALLY
+        -- Освобождаем блокировку
+        PERFORM pg_advisory_unlock(job_id);
+    END;
+END;
+$ LANGUAGE plpgsql;
+```
+
+## Мониторинг и диагностика транзакций
+
+### Просмотр активных транзакций
+
+```sql
+-- Текущие активные транзакции
+SELECT 
+    pid,
+    usename,
+    application_name,
+    client_addr,
+    backend_start,
+    xact_start,
+    state_change,
+    state,
+    query,
+    NOW() - xact_start AS transaction_duration
+FROM pg_stat_activity
+WHERE state != 'idle'
+ORDER BY xact_start;
+
+-- Долгие транзакции (более 5 минут)
+SELECT 
+    pid,
+    now() - xact_start AS duration,
+    state,
+    query
+FROM pg_stat_activity
+WHERE xact_start IS NOT NULL
+    AND now() - xact_start > interval '5 minutes'
+ORDER BY duration DESC;
+
+-- Idle транзакции (начаты, но ничего не делают)
+SELECT 
+    pid,
+    now() - state_change AS idle_duration,
+    state,
+    query
+FROM pg_stat_activity
+WHERE state = 'idle in transaction'
+ORDER BY idle_duration DESC;
+```
+
+### Transaction ID (XID) wraparound
+
+```sql
+-- Проверка на приближение XID wraparound
+SELECT 
+    datname,
+    age(datfrozenxid) as xid_age,
+    pg_size_pretty(pg_database_size(datname)) as size
+FROM pg_database
+ORDER BY age(datfrozenxid) DESC;
+
+-- Критическое значение: 2 миллиарда
+-- Если age > 1.5 миллиарда, нужно срочно делать VACUUM
+
+-- Таблицы, требующие VACUUM
+SELECT 
+    schemaname,
+    tablename,
+    age(relfrozenxid) as xid_age,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
+FROM pg_stat_user_tables
+JOIN pg_class ON pg_class.relname = tablename
+ORDER BY age(relfrozenxid) DESC
+LIMIT 20;
+
+-- Принудительный VACUUM FREEZE
+VACUUM FREEZE VERBOSE tablename;
+```
+
+### Статистика транзакций
+
+```sql
+-- Статистика коммитов и откатов
+SELECT 
+    datname,
+    xact_commit,
+    xact_rollback,
+    ROUND(100.0 * xact_rollback / NULLIF(xact_commit + xact_rollback, 0), 2) as rollback_ratio,
+    blks_read,
+    blks_hit,
+    ROUND(100.0 * blks_hit / NULLIF(blks_hit + blks_read, 0), 2) as cache_hit_ratio
+FROM pg_stat_database
+WHERE datname = current_database();
+
+-- Конфликты сериализации
+SELECT 
+    schemaname,
+    tablename,
+    n_tup_ins,
+    n_tup_upd,
+    n_tup_del,
+    n_live_tup,
+    n_dead_tup
+FROM pg_stat_user_tables
+ORDER BY n_dead_tup DESC;
+```
+
+## Настройки производительности
+
+### Параметры конфигурации
+
+```sql
+-- Просмотр текущих настроек
+SHOW max_connections;
+SHOW shared_buffers;
+SHOW work_mem;
+SHOW maintenance_work_mem;
+
+-- Настройки для транзакций
+SHOW default_transaction_isolation;
+SHOW statement_timeout;
+SHOW lock_timeout;
+SHOW idle_in_transaction_session_timeout;
+
+-- Рекомендуемые настройки в postgresql.conf:
+
+-- Таймаут для idle транзакций (предотвращает зависание)
+-- idle_in_transaction_session_timeout = '5min'
+
+-- Таймаут для выполнения запросов
+-- statement_timeout = '30s'
+
+-- Таймаут для получения блокировок
+-- lock_timeout = '10s'
+
+-- Логирование долгих транзакций
+-- log_min_duration_statement = 1000  # миллисекунды
+
+-- Deadlock timeout
+-- deadlock_timeout = '1s'
+```
+
+### Оптимизация производительности
+
+```sql
+-- 1. Используйте подходящий уровень изоляции
+-- По умолчанию: Read Committed
+-- Для большинства случаев достаточно
+
+-- 2. Минимизируйте время транзакций
+-- ПЛОХО:
+BEGIN;
+    SELECT * FROM large_table;  -- Долгий запрос
+    -- Долгие вычисления в приложении
+    UPDATE small_table SET value = 1;
+COMMIT;
+
+-- ХОРОШО:
+-- Вычисления вне транзакции
+BEGIN;
+    UPDATE small_table SET value = 1;
+COMMIT;
+
+-- 3. Используйте batch операции
+-- ПЛОХО:
+FOR i IN 1..10000 LOOP
+    BEGIN;
+        INSERT INTO table VALUES (i);
+    COMMIT;
+END LOOP;
+
+-- ХОРОШО:
+BEGIN;
+    INSERT INTO table SELECT generate_series(1, 10000);
+COMMIT;
+
+-- 4. Избегайте долгих idle транзакций
+-- Установите idle_in_transaction_session_timeout
+
+-- 5. Используйте connection pooling
+-- PgBouncer, Pgpool-II
+
+-- 6. Мониторьте блокировки
+-- Регулярно проверяйте pg_locks и pg_stat_activity
+```
+
+## Заключение
+
+Понимание транзакций, MVCC и уровней изоляции критически важно для разработки надежных приложений на PostgreSQL. Ключевые выводы:
+
+1. **ACID гарантии** обеспечивают надежность данных
+2. **MVCC** позволяет высокую производительность без блокировок чтения
+3. **Уровни изоляции** - это баланс между производительностью и согласованностью
+4. **Read Committed** подходит для большинства приложений
+5. **Repeatable Read** для финансовых операций и отчетов
+6. **Serializable** для критичных операций с возможностью retry
+7. **Короткие транзакции** - лучшая практика
+8. **Мониторинг** необходим для выявления проблем
+
+:::tip Золотое правило
+Используйте минимально необходимый уровень изоляции, держите транзакции короткими, мониторьте блокировки и deadlocks.
+:::

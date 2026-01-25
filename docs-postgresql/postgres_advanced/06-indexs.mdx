@@ -1,0 +1,770 @@
+---
+id: module-06-indexes
+title: "Индексы: B-tree, Hash, GiST, GIN, BRIN"
+sidebar_label: "Индексы"
+sidebar_position: 6
+description: "Полное руководство по работе с индексами в PostgreSQL"
+keywords: [postgresql, indexes, b-tree, hash, gist, gin, brin]
+---
+
+# Индексы: B-tree, Hash, GiST, GIN, BRIN
+
+## Введение
+
+Индексы — это специальные структуры данных, которые значительно ускоряют поиск и извлечение информации из базы данных. В PostgreSQL доступно несколько типов индексов, каждый из которых оптимизирован для определенных сценариев использования. В этом уроке мы подробно разберем пять основных типов индексов: B-tree, Hash, GiST, GIN и BRIN.
+
+:::tip Зачем нужны индексы?
+Без индексов PostgreSQL вынужден выполнять последовательное сканирование (sequential scan) всей таблицы для поиска нужных записей. Индексы позволяют находить данные значительно быстрее, особенно в больших таблицах.
+:::
+
+## B-tree индексы
+
+### Что такое B-tree?
+
+B-tree (Balanced Tree) — это самобалансирующееся дерево поиска, которое является индексом по умолчанию в PostgreSQL. Это универсальный и наиболее часто используемый тип индекса.
+
+### Принцип работы
+
+B-tree организует данные в виде сбалансированного дерева, где:
+
+- Все листовые узлы находятся на одном уровне
+- Данные хранятся в отсортированном порядке
+- Каждый узел содержит несколько ключей и ссылок на дочерние узлы
+- Поиск, вставка и удаление выполняются за O(log n)
+
+### Когда использовать B-tree
+
+B-tree индексы эффективны для:
+
+- Операций сравнения: `<`, `<=`, `=`, `>=`, `>`
+- Запросов с `BETWEEN`
+- Запросов с `IN`
+- Поиска с использованием `LIKE`, если шаблон не начинается с `%` (например, `'text%'`)
+- Запросов с `IS NULL` и `IS NOT NULL`
+- Сортировки (`ORDER BY`)
+
+### Создание B-tree индекса
+
+```sql
+-- Простой индекс
+CREATE INDEX idx_users_email ON users(email);
+
+-- Индекс явно указанного типа
+CREATE INDEX idx_users_email ON users USING btree(email);
+
+-- Составной индекс (по нескольким колонкам)
+CREATE INDEX idx_users_name_age ON users(last_name, first_name, age);
+
+-- Уникальный индекс
+CREATE UNIQUE INDEX idx_users_username ON users(username);
+
+-- Частичный индекс (только для активных пользователей)
+CREATE INDEX idx_active_users_email ON users(email) 
+WHERE is_active = true;
+```
+
+### Примеры использования
+
+```sql
+-- Создадим тестовую таблицу
+CREATE TABLE employees (
+    id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50),
+    last_name VARCHAR(50),
+    email VARCHAR(100),
+    hire_date DATE,
+    salary NUMERIC(10, 2),
+    department_id INTEGER
+);
+
+-- Создадим индексы
+CREATE INDEX idx_employees_last_name ON employees(last_name);
+CREATE INDEX idx_employees_hire_date ON employees(hire_date);
+CREATE INDEX idx_employees_dept_salary ON employees(department_id, salary);
+
+-- Запросы, которые будут использовать B-tree индексы
+SELECT * FROM employees WHERE last_name = 'Иванов';
+SELECT * FROM employees WHERE hire_date > '2020-01-01';
+SELECT * FROM employees WHERE salary BETWEEN 50000 AND 100000;
+SELECT * FROM employees WHERE last_name LIKE 'Петр%';
+SELECT * FROM employees ORDER BY last_name;
+```
+
+### Составные индексы
+
+Порядок колонок в составном индексе критически важен:
+
+```sql
+-- Индекс для (department_id, salary)
+CREATE INDEX idx_dept_salary ON employees(department_id, salary);
+
+-- Этот запрос будет использовать индекс эффективно
+SELECT * FROM employees 
+WHERE department_id = 5 AND salary > 60000;
+
+-- Этот запрос тоже использует индекс (только первую колонку)
+SELECT * FROM employees WHERE department_id = 5;
+
+-- Этот запрос НЕ использует индекс эффективно
+SELECT * FROM employees WHERE salary > 60000;
+```
+
+:::info Правило левой части
+B-tree индекс может использоваться для поиска только если условие включает самые левые колонки индекса. Индекс на `(a, b, c)` работает для условий на `a`, `(a, b)` и `(a, b, c)`, но не для `b` или `c` по отдельности.
+:::
+
+## Hash индексы
+
+### Что такое Hash индекс?
+
+Hash индексы используют хеш-функцию для преобразования значений в хеш-коды, которые затем используются для быстрого поиска. До версии PostgreSQL 10 hash индексы не записывались в WAL и могли быть повреждены при сбое, но теперь они полностью надежны.
+
+### Принцип работы
+
+Hash индексы:
+
+- Вычисляют хеш-код от значения колонки
+- Хранят хеш-коды в хеш-таблице
+- Обеспечивают O(1) для поиска по равенству
+- Не поддерживают упорядоченность данных
+
+### Когда использовать Hash
+
+Hash индексы эффективны только для:
+
+- Операций точного равенства (`=`)
+
+Hash индексы НЕ поддерживают:
+
+- Операции сравнения (`<`, `>`, `<=`, `>=`)
+- `LIKE`, `BETWEEN`, `IN` с диапазонами
+- Сортировку (`ORDER BY`)
+
+### Создание Hash индекса
+
+```sql
+-- Простой hash индекс
+CREATE INDEX idx_products_sku ON products USING hash(sku);
+
+-- Hash индекс для UUID
+CREATE INDEX idx_sessions_token ON sessions USING hash(session_token);
+```
+
+### Примеры использования
+
+```sql
+CREATE TABLE products (
+    id SERIAL PRIMARY KEY,
+    sku VARCHAR(50) UNIQUE,
+    name VARCHAR(200),
+    price NUMERIC(10, 2)
+);
+
+CREATE INDEX idx_products_sku_hash ON products USING hash(sku);
+
+-- Запрос, который использует hash индекс
+SELECT * FROM products WHERE sku = 'PROD-12345';
+
+-- Эти запросы НЕ используют hash индекс
+SELECT * FROM products WHERE sku LIKE 'PROD%';
+SELECT * FROM products ORDER BY sku;
+```
+
+:::warning Когда НЕ использовать Hash
+В большинстве случаев B-tree индексы предпочтительнее, так как они поддерживают больше операций и имеют сравнимую производительность для поиска по равенству. Hash индексы имеют смысл только в специфических сценариях с очень большими таблицами и запросами исключительно по равенству.
+:::
+
+## GiST индексы (Generalized Search Tree)
+
+### Что такое GiST?
+
+GiST (Generalized Search Tree) — это обобщенная структура индекса, которая позволяет создавать индексы для сложных типов данных. GiST не является конкретным типом индекса, а скорее фреймворком для построения различных индексных структур.
+
+### Принцип работы
+
+GiST индексы:
+
+- Организуют данные в виде сбалансированного дерева
+- Поддерживают пользовательские функции для сравнения и поиска
+- Позволяют индексировать геометрические данные, полнотекстовый поиск, диапазоны и многое другое
+- Могут быть использованы для ближайшего соседа (nearest neighbor) поиска
+
+### Когда использовать GiST
+
+GiST индексы идеальны для:
+
+- Геометрических данных (точки, линии, полигоны) — с расширением PostGIS
+- Полнотекстового поиска (хотя GIN часто предпочтительнее)
+- Диапазонов (range types)
+- Поиска ближайших соседей
+- Пользовательских типов данных с нестандартными операциями
+
+### Создание GiST индекса
+
+```sql
+-- Для геометрических данных
+CREATE TABLE locations (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100),
+    coordinates POINT
+);
+
+CREATE INDEX idx_locations_coords ON locations USING gist(coordinates);
+
+-- Для диапазонов дат
+CREATE TABLE reservations (
+    id SERIAL PRIMARY KEY,
+    room_id INTEGER,
+    period DATERANGE
+);
+
+CREATE INDEX idx_reservations_period ON reservations USING gist(period);
+
+-- Для полнотекстового поиска
+CREATE TABLE articles (
+    id SERIAL PRIMARY KEY,
+    title TEXT,
+    content TEXT,
+    search_vector TSVECTOR
+);
+
+CREATE INDEX idx_articles_search ON articles USING gist(search_vector);
+```
+
+### Примеры использования
+
+```sql
+-- Геометрический поиск
+SELECT * FROM locations 
+WHERE coordinates <-> point '(55.7558, 37.6173)' < 1000;
+
+-- Поиск пересекающихся диапазонов
+SELECT * FROM reservations 
+WHERE period && daterange('2024-01-15', '2024-01-20');
+
+-- Полнотекстовый поиск
+SELECT * FROM articles 
+WHERE search_vector @@ to_tsquery('postgresql & index');
+
+-- Поиск ближайших соседей
+SELECT *, coordinates <-> point '(55.7558, 37.6173)' AS distance
+FROM locations
+ORDER BY coordinates <-> point '(55.7558, 37.6173)'
+LIMIT 5;
+```
+
+### GiST для PostGIS
+
+```sql
+-- Установка PostGIS (если еще не установлено)
+CREATE EXTENSION postgis;
+
+CREATE TABLE cities (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100),
+    geom GEOMETRY(Point, 4326)
+);
+
+-- GiST индекс для географических данных
+CREATE INDEX idx_cities_geom ON cities USING gist(geom);
+
+-- Поиск городов в радиусе 100 км от точки
+SELECT name 
+FROM cities 
+WHERE ST_DWithin(
+    geom, 
+    ST_SetSRID(ST_MakePoint(37.6173, 55.7558), 4326)::geography,
+    100000
+);
+```
+
+:::tip GiST vs GIN
+Для полнотекстового поиска GIN обычно быстрее для поиска, но медленнее для обновлений. GiST быстрее для обновлений, но медленнее для поиска. Выбор зависит от вашего соотношения чтения/записи.
+:::
+
+## GIN индексы (Generalized Inverted Index)
+
+### Что такое GIN?
+
+GIN (Generalized Inverted Index) — это инвертированный индекс, оптимизированный для случаев, когда одно значение может соответствовать множеству строк. Это идеальный выбор для полнотекстового поиска и работы с массивами, JSONB и другими составными типами данных.
+
+### Принцип работы
+
+GIN индексы:
+
+- Создают отображение от элементов к строкам, содержащим эти элементы
+- Идеально подходят для поиска элементов внутри составных значений
+- Занимают больше места, чем B-tree, но обеспечивают очень быстрый поиск
+- Медленнее обновляются, чем B-tree индексы
+
+### Когда использовать GIN
+
+GIN индексы идеальны для:
+
+- Полнотекстового поиска
+- Поиска в JSONB документах
+- Поиска в массивах
+- Поиска в hstore
+- Операторов `@>`, `<@`, `&&`, `?`, `?&`, `?|`
+
+### Создание GIN индекса
+
+```sql
+-- Для полнотекстового поиска
+CREATE TABLE documents (
+    id SERIAL PRIMARY KEY,
+    title TEXT,
+    content TEXT,
+    search_vector TSVECTOR
+);
+
+CREATE INDEX idx_documents_search ON documents USING gin(search_vector);
+
+-- Для JSONB
+CREATE TABLE products (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200),
+    attributes JSONB
+);
+
+CREATE INDEX idx_products_attrs ON products USING gin(attributes);
+
+-- Для массивов
+CREATE TABLE tags (
+    id SERIAL PRIMARY KEY,
+    post_id INTEGER,
+    tag_list TEXT[]
+);
+
+CREATE INDEX idx_tags_list ON tags USING gin(tag_list);
+```
+
+### Примеры использования: Полнотекстовый поиск
+
+```sql
+-- Создание таблицы для блога
+CREATE TABLE blog_posts (
+    id SERIAL PRIMARY KEY,
+    title TEXT,
+    content TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Добавление колонки для поискового вектора
+ALTER TABLE blog_posts ADD COLUMN search_vector TSVECTOR;
+
+-- Создание триггера для автоматического обновления
+CREATE FUNCTION blog_posts_search_update() RETURNS trigger AS $$
+BEGIN
+    NEW.search_vector := 
+        setweight(to_tsvector('russian', COALESCE(NEW.title, '')), 'A') ||
+        setweight(to_tsvector('russian', COALESCE(NEW.content, '')), 'B');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER blog_posts_search_vector_update 
+BEFORE INSERT OR UPDATE ON blog_posts
+FOR EACH ROW EXECUTE FUNCTION blog_posts_search_update();
+
+-- Создание GIN индекса
+CREATE INDEX idx_blog_posts_search ON blog_posts USING gin(search_vector);
+
+-- Поиск по тексту
+SELECT title, ts_rank(search_vector, query) AS rank
+FROM blog_posts, to_tsquery('russian', 'postgresql & индексы') AS query
+WHERE search_vector @@ query
+ORDER BY rank DESC;
+```
+
+### Примеры использования: JSONB
+
+```sql
+-- Создание таблицы с JSONB
+CREATE TABLE products (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200),
+    attributes JSONB
+);
+
+-- Вставка данных
+INSERT INTO products (name, attributes) VALUES
+('Laptop', '{"brand": "Dell", "cpu": "Intel i7", "ram": "16GB", "tags": ["electronics", "computers"]}'),
+('Phone', '{"brand": "Samsung", "model": "Galaxy S21", "ram": "8GB", "tags": ["electronics", "mobile"]}'),
+('Monitor', '{"brand": "LG", "size": "27inch", "resolution": "4K", "tags": ["electronics", "displays"]}');
+
+-- Создание GIN индекса
+CREATE INDEX idx_products_attributes ON products USING gin(attributes);
+
+-- Запросы с JSONB
+-- Поиск продуктов с конкретным брендом
+SELECT * FROM products WHERE attributes @> '{"brand": "Dell"}';
+
+-- Поиск продуктов с определенным тегом
+SELECT * FROM products WHERE attributes @> '{"tags": ["electronics"]}';
+
+-- Проверка существования ключа
+SELECT * FROM products WHERE attributes ? 'cpu';
+
+-- Проверка существования любого из ключей
+SELECT * FROM products WHERE attributes ?| array['cpu', 'model'];
+
+-- Проверка существования всех ключей
+SELECT * FROM products WHERE attributes ?& array['brand', 'ram'];
+```
+
+### Примеры использования: Массивы
+
+```sql
+CREATE TABLE posts (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(200),
+    tags TEXT[]
+);
+
+INSERT INTO posts (title, tags) VALUES
+('PostgreSQL Indexes', ARRAY['database', 'postgresql', 'performance']),
+('Python Tutorial', ARRAY['programming', 'python', 'tutorial']),
+('SQL Optimization', ARRAY['database', 'sql', 'performance']);
+
+-- Создание GIN индекса для массива
+CREATE INDEX idx_posts_tags ON posts USING gin(tags);
+
+-- Поиск постов, содержащих определенный тег
+SELECT * FROM posts WHERE tags @> ARRAY['postgresql'];
+
+-- Поиск постов, содержащих любой из тегов
+SELECT * FROM posts WHERE tags && ARRAY['python', 'database'];
+
+-- Поиск постов, содержащихся в заданном массиве
+SELECT * FROM posts WHERE tags <@ ARRAY['database', 'sql', 'performance', 'optimization'];
+```
+
+### GIN параметры
+
+```sql
+-- Создание GIN индекса с параметрами
+CREATE INDEX idx_products_attrs ON products USING gin(attributes)
+WITH (fastupdate = on, gin_pending_list_limit = 4096);
+
+-- fastupdate: буферизует обновления для ускорения вставок
+-- gin_pending_list_limit: размер буфера ожидающих обновлений в КБ
+```
+
+:::warning Размер и обновления GIN
+GIN индексы обычно в 2-3 раза больше, чем B-tree индексы, и медленнее обновляются. Используйте их только когда действительно нужны их специфические возможности.
+:::
+
+## BRIN индексы (Block Range Index)
+
+### Что такое BRIN?
+
+BRIN (Block Range Index) — это компактный индекс, который хранит сводную информацию о диапазонах блоков данных. Он идеален для очень больших таблиц с естественной сортировкой данных (например, по времени).
+
+### Принцип работы
+
+BRIN индексы:
+
+- Делят таблицу на диапазоны страниц (по умолчанию 128 страниц)
+- Для каждого диапазона хранят минимальное и максимальное значения
+- Занимают очень мало места (в сотни раз меньше B-tree)
+- Эффективны для данных, которые физически упорядочены на диске
+
+### Когда использовать BRIN
+
+BRIN индексы идеальны для:
+
+- Очень больших таблиц (сотни миллионов строк)
+- Данных с естественной упорядоченностью (временные метки, автоинкрементные ID)
+- Логов и временных рядов
+- Данных, которые редко обновляются после вставки
+- Ситуаций, где важен размер индекса
+
+BRIN НЕ подходит для:
+
+- Данных без естественной упорядоченности
+- Таблиц с частыми обновлениями
+- Запросов, требующих точного поиска единичных записей
+
+### Создание BRIN индекса
+
+```sql
+-- Простой BRIN индекс
+CREATE INDEX idx_logs_created ON logs USING brin(created_at);
+
+-- BRIN индекс с настраиваемым размером диапазона
+CREATE INDEX idx_logs_created ON logs USING brin(created_at)
+WITH (pages_per_range = 256);
+
+-- BRIN индекс для нескольких колонок
+CREATE INDEX idx_events_time_type ON events USING brin(event_time, event_type);
+```
+
+### Примеры использования
+
+```sql
+-- Создание таблицы для логов
+CREATE TABLE application_logs (
+    id BIGSERIAL PRIMARY KEY,
+    log_time TIMESTAMP NOT NULL,
+    level VARCHAR(10),
+    message TEXT,
+    user_id INTEGER
+);
+
+-- Вставка большого количества данных (симуляция)
+INSERT INTO application_logs (log_time, level, message, user_id)
+SELECT 
+    NOW() - (random() * interval '365 days'),
+    CASE WHEN random() < 0.7 THEN 'INFO' 
+         WHEN random() < 0.9 THEN 'WARNING' 
+         ELSE 'ERROR' END,
+    'Sample log message ' || generate_series,
+    (random() * 10000)::INTEGER
+FROM generate_series(1, 10000000);
+
+-- Создание BRIN индекса
+CREATE INDEX idx_logs_time ON application_logs USING brin(log_time)
+WITH (pages_per_range = 128);
+
+-- Запросы, эффективно использующие BRIN
+SELECT COUNT(*) FROM application_logs 
+WHERE log_time >= '2024-01-01' AND log_time < '2024-02-01';
+
+SELECT level, COUNT(*) FROM application_logs 
+WHERE log_time >= NOW() - interval '7 days'
+GROUP BY level;
+```
+
+### Сравнение размеров индексов
+
+```sql
+-- Создадим таблицу с миллионом записей
+CREATE TABLE time_series (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP,
+    value NUMERIC
+);
+
+INSERT INTO time_series (timestamp, value)
+SELECT 
+    NOW() - (interval '1 second' * generate_series),
+    random() * 100
+FROM generate_series(1, 1000000);
+
+-- Создадим разные типы индексов
+CREATE INDEX idx_ts_btree ON time_series USING btree(timestamp);
+CREATE INDEX idx_ts_brin ON time_series USING brin(timestamp);
+
+-- Сравним размеры
+SELECT 
+    indexname,
+    pg_size_pretty(pg_relation_size(indexname::regclass)) AS index_size
+FROM pg_indexes
+WHERE tablename = 'time_series';
+
+-- Результат (примерно):
+-- idx_ts_btree: ~21 MB
+-- idx_ts_brin:  ~48 KB (в ~400 раз меньше!)
+```
+
+### Оптимизация BRIN индексов
+
+```sql
+-- Параметр pages_per_range определяет компромисс между 
+-- размером индекса и точностью
+
+-- Меньше страниц = больше точность, больше размер
+CREATE INDEX idx_logs_fine ON logs USING brin(created_at)
+WITH (pages_per_range = 64);
+
+-- Больше страниц = меньше точность, меньше размер
+CREATE INDEX idx_logs_coarse ON logs USING brin(created_at)
+WITH (pages_per_range = 512);
+
+-- Для данных с хорошей корреляцией можно использовать большие диапазоны
+-- Проверка корреляции:
+SELECT tablename, attname, correlation
+FROM pg_stats
+WHERE tablename = 'logs' AND attname = 'created_at';
+
+-- Корреляция близкая к 1 или -1 означает хорошую упорядоченность
+```
+
+:::tip BRIN для временных рядов
+BRIN индексы особенно эффективны для таблиц логов и временных рядов, где данные вставляются последовательно по времени. В таких случаях BRIN может обеспечить 99% производительности B-tree при размере индекса в сотни раз меньше.
+:::
+
+## Сравнение типов индексов
+
+### Таблица сравнения
+
+| Характеристика | B-tree | Hash | GiST | GIN | BRIN |
+|----------------|--------|------|------|-----|------|
+| Поддержка `=` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Поддержка `<`, `>` | ✅ | ❌ | ✅ | ❌ | ✅ |
+| `ORDER BY` | ✅ | ❌ | Частично | ❌ | ❌ |
+| Полнотекстовый поиск | ❌ | ❌ | ✅ | ✅ | ❌ |
+| Массивы/JSONB | ❌ | ❌ | ✅ | ✅ | ❌ |
+| Геометрия | ❌ | ❌ | ✅ | ❌ | ✅ |
+| Размер индекса | Средний | Средний | Большой | Очень большой | Крошечный |
+| Скорость вставки | Быстро | Быстро | Средне | Медленно | Очень быстро |
+| Скорость поиска | Быстро | Очень быстро | Быстро | Очень быстро | Средне |
+
+### Рекомендации по выбору
+
+**Используйте B-tree когда:**
+- Нужны операции сравнения или диапазоны
+- Нужна сортировка
+- Это ваш выбор по умолчанию для большинства случаев
+
+**Используйте Hash когда:**
+- Нужны только запросы по точному равенству
+- Таблица очень большая
+- B-tree показывает недостаточную производительность
+
+**Используйте GiST когда:**
+- Работаете с геометрическими данными
+- Нужен поиск ближайших соседей
+- Используете нестандартные типы данных
+- Нужен баланс между скоростью поиска и обновлений для полнотекстового поиска
+
+**Используйте GIN когда:**
+- Работаете с JSONB документами
+- Нужен полнотекстовый поиск с максимальной скоростью
+- Индексируете массивы
+- Операций чтения намного больше, чем записи
+
+**Используйте BRIN когда:**
+- Таблица очень большая (сотни миллионов строк)
+- Данные естественно упорядочены (логи, временные ряды)
+- Размер индекса критичен
+- Данные редко обновляются после вставки
+
+## Практические рекомендации
+
+### Анализ использования индексов
+
+```sql
+-- Просмотр всех индексов таблицы
+SELECT 
+    indexname,
+    indexdef
+FROM pg_indexes
+WHERE tablename = 'your_table';
+
+-- Проверка размера индексов
+SELECT
+    schemaname,
+    tablename,
+    indexname,
+    pg_size_pretty(pg_relation_size(indexrelid)) AS index_size
+FROM pg_stat_user_indexes
+ORDER BY pg_relation_size(indexrelid) DESC;
+
+-- Статистика использования индексов
+SELECT
+    schemaname,
+    tablename,
+    indexname,
+    idx_scan as index_scans,
+    idx_tup_read as tuples_read,
+    idx_tup_fetch as tuples_fetched
+FROM pg_stat_user_indexes
+WHERE schemaname = 'public'
+ORDER BY idx_scan ASC;
+
+-- Неиспользуемые индексы (потенциальные кандидаты на удаление)
+SELECT
+    schemaname,
+    tablename,
+    indexname,
+    pg_size_pretty(pg_relation_size(indexrelid)) AS index_size
+FROM pg_stat_user_indexes
+WHERE idx_scan = 0
+    AND indexrelname NOT LIKE '%pkey%'
+ORDER BY pg_relation_size(indexrelid) DESC;
+```
+
+### Использование EXPLAIN для анализа
+
+```sql
+-- Простой EXPLAIN
+EXPLAIN SELECT * FROM users WHERE email = 'test@example.com';
+
+-- EXPLAIN с деталями выполнения
+EXPLAIN (ANALYZE, BUFFERS) 
+SELECT * FROM users WHERE email = 'test@example.com';
+
+-- Форматированный вывод
+EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) 
+SELECT * FROM users WHERE email = 'test@example.com';
+```
+
+### Обслуживание индексов
+
+```sql
+-- Пересоздание индекса (блокирует таблицу)
+REINDEX INDEX idx_users_email;
+
+-- Пересоздание всех индексов таблицы
+REINDEX TABLE users;
+
+-- Пересоздание без блокировки (PostgreSQL 12+)
+CREATE INDEX CONCURRENTLY idx_users_email_new ON users(email);
+DROP INDEX CONCURRENTLY idx_users_email;
+ALTER INDEX idx_users_email_new RENAME TO idx_users_email;
+
+-- Обновление статистики
+ANALYZE users;
+
+-- Полная очистка и обновление статистики
+VACUUM ANALYZE users;
+```
+
+### Частичные индексы для оптимизации
+
+```sql
+-- Индекс только для активных пользователей
+CREATE INDEX idx_active_users_email ON users(email)
+WHERE is_active = true;
+
+-- Индекс только для недавних заказов
+CREATE INDEX idx_recent_orders ON orders(created_at)
+WHERE created_at > '2024-01-01';
+
+-- Индекс только для непустых значений
+CREATE INDEX idx_users_phone ON users(phone)
+WHERE phone IS NOT NULL;
+
+-- Составной частичный индекс
+CREATE INDEX idx_premium_users ON users(created_at, email)
+WHERE subscription_type = 'premium' AND is_active = true;
+```
+
+### Индексы с выражениями
+
+```sql
+-- Индекс для поиска без учета регистра
+CREATE INDEX idx_users_email_lower ON users(LOWER(email));
+
+-- Использование
+SELECT * FROM users WHERE LOWER(email) = LOWER('Test@Example.com');
+
+-- Индекс для вычисляемых значений
+CREATE INDEX idx_orders_total ON orders((quantity * price));
+
+-- Индекс для JSON пути
+CREATE INDEX idx_users_metadata_country 
+ON users((metadata->>'country'));
+
+-- Индекс для даты без времени
+CREATE INDEX idx_logs_date ON logs(DATE(created_at));
+```
+
+### Рекомендации по созданию индексов
+
+1. **Не создавайте индексы преждевременно** — сначала профилируйте запросы
+2. **Используйте составные индексы разумно** — порядок колонок важен
+3. **Избегайте избыточных индексов** — индекс на `(a, b)` делает индекс на `(a)` ненужным
+4. **Используйте частичные индексы** когда нужно индексировать только часть данных

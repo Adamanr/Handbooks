@@ -1,0 +1,1177 @@
+---
+id: module-09-normalized
+title: "Нормализация и денормализация: проектирование эффективных схем БД"
+sidebar_label: "Нормализация и денормализация: проектирование эффективных схем БД"
+sidebar_position: 9
+description: "Полное руководство по работе с нормализацией и денормализацией"
+keywords: [postgresql, normalization, denormalization]
+---
+
+# Нормализация и денормализация: проектирование эффективных схем БД
+
+## Введение
+
+Проектирование структуры базы данных — один из важнейших этапов разработки приложения. Правильная схема данных обеспечивает целостность информации, производительность запросов и масштабируемость системы. В этом уроке мы подробно изучим процессы нормализации и денормализации, научимся проектировать эффективные схемы баз данных и поймем, когда и как нарушать правила нормализации для достижения лучшей производительности.
+
+## Основы проектирования БД
+
+### Жизненный цикл проектирования
+
+```
+1. Анализ требований
+   ↓
+2. Концептуальное проектирование (ER-диаграммы)
+   ↓
+3. Логическое проектирование (нормализация)
+   ↓
+4. Физическое проектирование (оптимизация)
+   ↓
+5. Реализация
+   ↓
+6. Поддержка и рефакторинг
+```
+
+### Ключевые понятия
+
+```sql
+-- Первичный ключ (Primary Key)
+CREATE TABLE customers (
+    customer_id SERIAL PRIMARY KEY,  -- Уникальный идентификатор
+    email VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL
+);
+
+-- Внешний ключ (Foreign Key)
+CREATE TABLE orders (
+    order_id SERIAL PRIMARY KEY,
+    customer_id INTEGER NOT NULL,
+    order_date DATE NOT NULL,
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+);
+
+-- Составной ключ (Composite Key)
+CREATE TABLE order_items (
+    order_id INTEGER,
+    product_id INTEGER,
+    quantity INTEGER NOT NULL,
+    PRIMARY KEY (order_id, product_id),
+    FOREIGN KEY (order_id) REFERENCES orders(order_id),
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
+);
+
+-- Суррогатный vs естественный ключ
+CREATE TABLE users_natural (
+    email VARCHAR(100) PRIMARY KEY,  -- Естественный ключ
+    name VARCHAR(100)
+);
+
+CREATE TABLE users_surrogate (
+    user_id SERIAL PRIMARY KEY,      -- Суррогатный ключ
+    email VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(100)
+);
+```
+
+:::tip Суррогатный vs Естественный ключ
+**Суррогатный ключ** (SERIAL, UUID) — искусственный идентификатор без бизнес-значения. Рекомендуется для большинства случаев.
+
+**Естественный ключ** — реальный атрибут данных (email, ISBN). Используйте только если значение действительно уникально и неизменно.
+:::
+
+## Нормализация: теория и практика
+
+### Что такое нормализация?
+
+**Нормализация** — процесс организации данных в базе для минимизации избыточности и предотвращения аномалий при вставке, обновлении и удалении данных.
+
+**Цели нормализации:**
+- Устранение дублирования данных
+- Обеспечение целостности данных
+- Упрощение обслуживания
+- Гибкость при изменениях
+
+### Первая нормальная форма (1NF)
+
+**Определение:** Каждый атрибут содержит только атомарные (неделимые) значения, нет повторяющихся групп.
+
+```sql
+-- ❌ ПЛОХО: Нарушение 1NF
+CREATE TABLE orders_bad (
+    order_id SERIAL PRIMARY KEY,
+    customer_name VARCHAR(100),
+    products VARCHAR(500),  -- "Laptop, Mouse, Keyboard" - не атомарно!
+    quantities VARCHAR(100)  -- "1, 2, 1" - не атомарно!
+);
+
+INSERT INTO orders_bad VALUES 
+    (1, 'Иван Петров', 'Laptop, Mouse, Keyboard', '1, 2, 1');
+
+-- Проблемы:
+-- 1. Сложно искать конкретный продукт
+-- 2. Сложно подсчитать количество товаров
+-- 3. Нет контроля целостности
+
+-- ✅ ХОРОШО: Соответствие 1NF
+CREATE TABLE orders_good (
+    order_id SERIAL PRIMARY KEY,
+    customer_name VARCHAR(100),
+    order_date DATE DEFAULT CURRENT_DATE
+);
+
+CREATE TABLE order_items (
+    order_item_id SERIAL PRIMARY KEY,
+    order_id INTEGER REFERENCES orders_good(order_id),
+    product_name VARCHAR(100),
+    quantity INTEGER NOT NULL CHECK (quantity > 0)
+);
+
+-- Вставка данных
+INSERT INTO orders_good (customer_name) VALUES ('Иван Петров');
+
+INSERT INTO order_items (order_id, product_name, quantity) VALUES
+    (1, 'Laptop', 1),
+    (1, 'Mouse', 2),
+    (1, 'Keyboard', 1);
+
+-- Теперь легко искать и агрегировать
+SELECT product_name, SUM(quantity)
+FROM order_items
+WHERE order_id = 1
+GROUP BY product_name;
+```
+
+**Правило 1NF:**
+- Каждая колонка содержит только одно значение
+- Нет повторяющихся групп колонок
+- Каждая строка уникальна (есть первичный ключ)
+
+### Вторая нормальная форма (2NF)
+
+**Определение:** Таблица в 1NF, и все неключевые атрибуты полностью зависят от первичного ключа (нет частичных зависимостей).
+
+```sql
+-- ❌ ПЛОХО: Нарушение 2NF
+CREATE TABLE order_items_bad (
+    order_id INTEGER,
+    product_id INTEGER,
+    product_name VARCHAR(100),      -- Зависит только от product_id!
+    product_price NUMERIC(10, 2),   -- Зависит только от product_id!
+    quantity INTEGER,
+    PRIMARY KEY (order_id, product_id)
+);
+
+-- Проблемы:
+-- 1. Дублирование: название и цена товара повторяются в каждом заказе
+-- 2. Аномалия обновления: изменение цены требует обновления всех заказов
+-- 3. Аномалия удаления: удаление последнего заказа удаляет информацию о товаре
+
+-- ✅ ХОРОШО: Соответствие 2NF
+CREATE TABLE products (
+    product_id SERIAL PRIMARY KEY,
+    product_name VARCHAR(100) NOT NULL,
+    product_price NUMERIC(10, 2) NOT NULL CHECK (product_price >= 0)
+);
+
+CREATE TABLE order_items_good (
+    order_id INTEGER,
+    product_id INTEGER,
+    quantity INTEGER NOT NULL,
+    -- Цену на момент заказа можно сохранить отдельно
+    price_at_order NUMERIC(10, 2) NOT NULL,
+    PRIMARY KEY (order_id, product_id),
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
+);
+
+-- Теперь изменение цены товара не затрагивает старые заказы
+UPDATE products SET product_price = 999.99 WHERE product_id = 1;
+```
+
+**Правило 2NF:**
+- Соответствует 1NF
+- Нет частичных зависимостей от составного ключа
+- Каждый неключевой атрибут зависит от всего первичного ключа
+
+### Третья нормальная форма (3NF)
+
+**Определение:** Таблица в 2NF, и нет транзитивных зависимостей (неключевые атрибуты не зависят от других неключевых атрибутов).
+
+```sql
+-- ❌ ПЛОХО: Нарушение 3NF
+CREATE TABLE employees_bad (
+    employee_id SERIAL PRIMARY KEY,
+    name VARCHAR(100),
+    department_id INTEGER,
+    department_name VARCHAR(100),    -- Транзитивная зависимость!
+    department_location VARCHAR(100) -- Зависит от department_id через department_name
+);
+
+-- Проблемы:
+-- 1. Дублирование: название и местоположение отдела повторяются
+-- 2. Аномалия обновления: переименование отдела требует обновления всех сотрудников
+-- 3. Избыточность: информация об отделе хранится многократно
+
+-- ✅ ХОРОШО: Соответствие 3NF
+CREATE TABLE departments (
+    department_id SERIAL PRIMARY KEY,
+    department_name VARCHAR(100) NOT NULL,
+    department_location VARCHAR(100)
+);
+
+CREATE TABLE employees_good (
+    employee_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    department_id INTEGER,
+    FOREIGN KEY (department_id) REFERENCES departments(department_id)
+);
+
+-- Данные об отделе хранятся один раз
+INSERT INTO departments (department_name, department_location) VALUES
+    ('IT', 'Москва'),
+    ('Sales', 'Санкт-Петербург');
+
+INSERT INTO employees_good (name, department_id) VALUES
+    ('Иван Петров', 1),
+    ('Мария Сидорова', 1),
+    ('Алексей Смирнов', 2);
+
+-- Обновление названия отдела в одном месте
+UPDATE departments SET department_name = 'Information Technology' WHERE department_id = 1;
+```
+
+**Правило 3NF:**
+- Соответствует 2NF
+- Нет транзитивных зависимостей
+- Неключевые атрибуты зависят только от первичного ключа
+
+### Нормальная форма Бойса-Кодда (BCNF)
+
+**Определение:** Усиленная версия 3NF. Каждый детерминант является потенциальным ключом.
+
+```sql
+-- Пример нарушения BCNF (редкий случай)
+CREATE TABLE course_teachers (
+    course_id INTEGER,
+    teacher_id INTEGER,
+    teacher_name VARCHAR(100),
+    classroom VARCHAR(50),
+    PRIMARY KEY (course_id, teacher_id),
+    -- Проблема: teacher_name зависит от teacher_id (детерминант не ключ)
+    -- Classroom зависит от (teacher_id, time_slot) - но time_slot нет в таблице
+    UNIQUE (course_id, classroom)
+);
+
+-- Решение для BCNF
+CREATE TABLE teachers (
+    teacher_id SERIAL PRIMARY KEY,
+    teacher_name VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE course_assignments (
+    course_id INTEGER,
+    teacher_id INTEGER,
+    classroom VARCHAR(50),
+    PRIMARY KEY (course_id, teacher_id),
+    FOREIGN KEY (teacher_id) REFERENCES teachers(teacher_id)
+);
+```
+
+### Четвертая нормальная форма (4NF)
+
+**Определение:** Устранение многозначных зависимостей.
+
+```sql
+-- ❌ Нарушение 4NF
+CREATE TABLE employee_skills_languages (
+    employee_id INTEGER,
+    skill VARCHAR(50),
+    language VARCHAR(50),
+    PRIMARY KEY (employee_id, skill, language)
+);
+
+-- Проблема: избыточность при независимых многозначных зависимостях
+-- Если сотрудник знает 3 навыка и 2 языка = 6 строк вместо 5
+
+INSERT INTO employee_skills_languages VALUES
+    (1, 'Python', 'English'),
+    (1, 'Python', 'Russian'),
+    (1, 'SQL', 'English'),
+    (1, 'SQL', 'Russian'),
+    (1, 'Java', 'English'),
+    (1, 'Java', 'Russian');
+
+-- ✅ Соответствие 4NF: разделение на две таблицы
+CREATE TABLE employee_skills (
+    employee_id INTEGER,
+    skill VARCHAR(50),
+    PRIMARY KEY (employee_id, skill)
+);
+
+CREATE TABLE employee_languages (
+    employee_id INTEGER,
+    language VARCHAR(50),
+    PRIMARY KEY (employee_id, language)
+);
+
+INSERT INTO employee_skills VALUES (1, 'Python'), (1, 'SQL'), (1, 'Java');
+INSERT INTO employee_languages VALUES (1, 'English'), (1, 'Russian');
+```
+
+### Пятая нормальная форма (5NF)
+
+**Определение:** Устранение зависимостей соединения (очень редко используется на практике).
+
+```sql
+-- 5NF применяется к сложным тройным зависимостям
+-- Пример: поставщики, товары, проекты
+
+-- Если существуют независимые связи:
+-- - Поставщик может поставлять товар
+-- - Товар может использоваться в проекте  
+-- - Поставщик может работать с проектом
+
+-- То вместо одной таблицы (supplier, product, project)
+-- Создаются три таблицы попарных связей
+
+CREATE TABLE supplier_products (
+    supplier_id INTEGER,
+    product_id INTEGER,
+    PRIMARY KEY (supplier_id, product_id)
+);
+
+CREATE TABLE product_projects (
+    product_id INTEGER,
+    project_id INTEGER,
+    PRIMARY KEY (product_id, project_id)
+);
+
+CREATE TABLE supplier_projects (
+    supplier_id INTEGER,
+    project_id INTEGER,
+    PRIMARY KEY (supplier_id, project_id)
+);
+```
+
+## Практический пример: проектирование интернет-магазина
+
+### Нормализованная схема
+
+```sql
+-- Создание полностью нормализованной схемы интернет-магазина
+
+-- Клиенты
+CREATE TABLE customers (
+    customer_id SERIAL PRIMARY KEY,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    first_name VARCHAR(50),
+    last_name VARCHAR(50),
+    phone VARCHAR(20),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Адреса (отдельная таблица для множественных адресов)
+CREATE TABLE addresses (
+    address_id SERIAL PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(customer_id),
+    address_type VARCHAR(20) CHECK (address_type IN ('shipping', 'billing')),
+    street VARCHAR(200) NOT NULL,
+    city VARCHAR(100) NOT NULL,
+    state VARCHAR(100),
+    postal_code VARCHAR(20),
+    country VARCHAR(100) NOT NULL,
+    is_default BOOLEAN DEFAULT FALSE
+);
+
+-- Категории (иерархическая структура)
+CREATE TABLE categories (
+    category_id SERIAL PRIMARY KEY,
+    parent_category_id INTEGER REFERENCES categories(category_id),
+    category_name VARCHAR(100) NOT NULL,
+    slug VARCHAR(100) UNIQUE NOT NULL
+);
+
+-- Товары
+CREATE TABLE products (
+    product_id SERIAL PRIMARY KEY,
+    category_id INTEGER REFERENCES categories(category_id),
+    sku VARCHAR(50) UNIQUE NOT NULL,
+    product_name VARCHAR(200) NOT NULL,
+    description TEXT,
+    price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
+    cost NUMERIC(10, 2) NOT NULL CHECK (cost >= 0),
+    stock_quantity INTEGER DEFAULT 0 CHECK (stock_quantity >= 0),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Атрибуты товаров (EAV pattern для гибкости)
+CREATE TABLE product_attributes (
+    attribute_id SERIAL PRIMARY KEY,
+    product_id INTEGER NOT NULL REFERENCES products(product_id),
+    attribute_name VARCHAR(50) NOT NULL,
+    attribute_value VARCHAR(200) NOT NULL,
+    UNIQUE (product_id, attribute_name)
+);
+
+-- Заказы
+CREATE TABLE orders (
+    order_id SERIAL PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(customer_id),
+    shipping_address_id INTEGER REFERENCES addresses(address_id),
+    billing_address_id INTEGER REFERENCES addresses(address_id),
+    order_date TIMESTAMPTZ DEFAULT NOW(),
+    status VARCHAR(20) DEFAULT 'pending' CHECK (
+        status IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')
+    ),
+    subtotal NUMERIC(12, 2),
+    tax_amount NUMERIC(12, 2),
+    shipping_cost NUMERIC(10, 2),
+    total_amount NUMERIC(12, 2)
+);
+
+-- Позиции заказа
+CREATE TABLE order_items (
+    order_item_id SERIAL PRIMARY KEY,
+    order_id INTEGER NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+    product_id INTEGER NOT NULL REFERENCES products(product_id),
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    unit_price NUMERIC(10, 2) NOT NULL,  -- Цена на момент заказа
+    discount_amount NUMERIC(10, 2) DEFAULT 0,
+    subtotal NUMERIC(12, 2) NOT NULL
+);
+
+-- История статусов заказа
+CREATE TABLE order_status_history (
+    history_id SERIAL PRIMARY KEY,
+    order_id INTEGER NOT NULL REFERENCES orders(order_id),
+    old_status VARCHAR(20),
+    new_status VARCHAR(20) NOT NULL,
+    changed_at TIMESTAMPTZ DEFAULT NOW(),
+    changed_by INTEGER,
+    notes TEXT
+);
+
+-- Отзывы
+CREATE TABLE product_reviews (
+    review_id SERIAL PRIMARY KEY,
+    product_id INTEGER NOT NULL REFERENCES products(product_id),
+    customer_id INTEGER NOT NULL REFERENCES customers(customer_id),
+    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    title VARCHAR(200),
+    review_text TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (product_id, customer_id)
+);
+
+-- Индексы для производительности
+CREATE INDEX idx_products_category ON products(category_id);
+CREATE INDEX idx_products_sku ON products(sku);
+CREATE INDEX idx_orders_customer ON orders(customer_id);
+CREATE INDEX idx_orders_date ON orders(order_date);
+CREATE INDEX idx_order_items_product ON order_items(product_id);
+CREATE INDEX idx_addresses_customer ON addresses(customer_id);
+```
+
+### Преимущества нормализации
+
+```sql
+-- ✅ Нет дублирования данных
+-- Информация о клиенте хранится один раз
+UPDATE customers SET email = 'newemail@example.com' WHERE customer_id = 1;
+-- Обновляется в одном месте
+
+-- ✅ Целостность данных
+-- Невозможно создать заказ для несуществующего клиента
+INSERT INTO orders (customer_id, total_amount) VALUES (9999, 100);
+-- ERROR: foreign key constraint
+
+-- ✅ Гибкость
+-- Легко добавить новый адрес клиенту
+INSERT INTO addresses (customer_id, address_type, street, city, country)
+VALUES (1, 'shipping', 'Новый адрес', 'Москва', 'Россия');
+
+-- ✅ Простота обслуживания
+-- Изменение цены товара не влияет на старые заказы
+UPDATE products SET price = 999.99 WHERE product_id = 1;
+-- Старые заказы сохраняют unit_price на момент покупки
+```
+
+## Денормализация: когда и как
+
+**Денормализация (denormalization)** — это намеренное нарушение правил нормализации базы данных (введение избыточности, дублирования данных, объединение таблиц), которое делают ради значительного ускорения чтения (SELECT-запросов).
+
+### Когда денормализация необходима?
+
+**Причины для денормализации:**
+1. Критичная производительность запросов
+2. Сложные JOIN затрудняют работу
+3. Частые агрегации данных
+4. Необходимость исторических данных
+5. Оптимизация для чтения (read-heavy workload)
+
+### Типы денормализации
+
+#### Добавление вычисляемых полей
+
+```sql
+-- Денормализация: добавление предрассчитанных полей
+ALTER TABLE orders ADD COLUMN items_count INTEGER DEFAULT 0;
+
+-- Триггер для автоматического обновления
+CREATE OR REPLACE FUNCTION update_order_items_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE orders
+    SET items_count = (
+        SELECT COALESCE(SUM(quantity), 0)
+        FROM order_items
+        WHERE order_id = COALESCE(NEW.order_id, OLD.order_id)
+    )
+    WHERE order_id = COALESCE(NEW.order_id, OLD.order_id);
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_items_count
+AFTER INSERT OR UPDATE OR DELETE ON order_items
+FOR EACH ROW EXECUTE FUNCTION update_order_items_count();
+
+-- Теперь items_count доступен без JOIN
+SELECT order_id, total_amount, items_count
+FROM orders
+WHERE customer_id = 1;
+```
+
+#### Дублирование часто используемых данных
+
+```sql
+-- Добавление имени клиента в заказ (для быстрого отображения)
+ALTER TABLE orders ADD COLUMN customer_name VARCHAR(200);
+
+CREATE OR REPLACE FUNCTION cache_customer_name()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.customer_name := (
+        SELECT first_name || ' ' || last_name
+        FROM customers
+        WHERE customer_id = NEW.customer_id
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_cache_customer_name
+BEFORE INSERT OR UPDATE OF customer_id ON orders
+FOR EACH ROW EXECUTE FUNCTION cache_customer_name();
+
+-- Быстрая выборка без JOIN
+SELECT order_id, customer_name, total_amount
+FROM orders
+WHERE order_date >= CURRENT_DATE - INTERVAL '7 days';
+```
+
+#### Материализованные представления
+
+**Материализованные представления (materialized views, сокращённо matviews)** — это "замороженный" результат SQL-запроса, который хранится на диске как отдельная таблица, но при этом связан с исходным запросом.
+
+В отличие от обычных представлений (views), которые пересчитываются каждый раз при обращении (виртуальные, не хранят данные), материализованные:
+- Хранят данные физически → чтение из них молниеносное (как из таблицы)
+- Нуждаются в обновлении (REFRESH), чтобы отражать изменения в базовых таблицах
+
+
+```sql
+-- Создание материализованного представления для дашборда
+CREATE MATERIALIZED VIEW mv_product_sales_stats AS
+SELECT 
+    p.product_id,
+    p.product_name,
+    p.category_id,
+    c.category_name,
+    COUNT(DISTINCT oi.order_id) AS order_count,
+    SUM(oi.quantity) AS total_sold,
+    SUM(oi.subtotal) AS total_revenue,
+    AVG(pr.rating) AS avg_rating,
+    COUNT(pr.review_id) AS review_count
+FROM products p
+LEFT JOIN categories c ON p.category_id = c.category_id
+LEFT JOIN order_items oi ON p.product_id = oi.product_id
+LEFT JOIN product_reviews pr ON p.product_id = pr.product_id
+GROUP BY p.product_id, p.product_name, p.category_id, c.category_name;
+
+-- Индекс на представлении
+CREATE INDEX idx_mv_product_sales_category ON mv_product_sales_stats(category_id);
+
+-- Периодическое обновление (например, раз в час)
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_product_sales_stats;
+
+-- Быстрые запросы без сложных JOIN
+SELECT product_name, total_revenue, avg_rating
+FROM mv_product_sales_stats
+WHERE category_id = 5
+ORDER BY total_revenue DESC
+LIMIT 10;
+```
+
+#### Агрегация данных в отдельные таблицы
+
+```sql
+-- Таблица для ежедневной статистики (денормализация)
+CREATE TABLE daily_sales_stats (
+    stats_date DATE PRIMARY KEY,
+    total_orders INTEGER DEFAULT 0,
+    total_revenue NUMERIC(12, 2) DEFAULT 0,
+    total_customers INTEGER DEFAULT 0,
+    avg_order_value NUMERIC(10, 2) DEFAULT 0,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Функция для расчета статистики
+CREATE OR REPLACE FUNCTION calculate_daily_stats(target_date DATE)
+RETURNS VOID AS $$
+BEGIN
+    INSERT INTO daily_sales_stats (
+        stats_date,
+        total_orders,
+        total_revenue,
+        total_customers,
+        avg_order_value
+    )
+    SELECT 
+        target_date,
+        COUNT(DISTINCT order_id),
+        SUM(total_amount),
+        COUNT(DISTINCT customer_id),
+        AVG(total_amount)
+    FROM orders
+    WHERE DATE(order_date) = target_date
+      AND status != 'cancelled'
+    ON CONFLICT (stats_date)
+    DO UPDATE SET
+        total_orders = EXCLUDED.total_orders,
+        total_revenue = EXCLUDED.total_revenue,
+        total_customers = EXCLUDED.total_customers,
+        avg_order_value = EXCLUDED.avg_order_value,
+        updated_at = NOW();
+END;
+$$ LANGUAGE plpgsql;
+
+-- Ежедневное обновление (через cron)
+SELECT calculate_daily_stats(CURRENT_DATE - 1);
+
+-- Быстрые аналитические запросы
+SELECT 
+    stats_date,
+    total_revenue,
+    total_orders,
+    avg_order_value
+FROM daily_sales_stats
+WHERE stats_date >= CURRENT_DATE - INTERVAL '30 days'
+ORDER BY stats_date;
+```
+
+### Компромиссы денормализации
+
+```sql
+-- Сравнение нормализованной и денормализованной схемы
+
+-- ❌ Недостатки денормализации:
+-- 1. Дублирование данных
+-- 2. Риск рассинхронизации
+-- 3. Сложность обновления
+-- 4. Увеличенное использование места
+
+-- ✅ Преимущества денормализации:
+-- 1. Быстрые SELECT запросы
+-- 2. Меньше JOIN операций
+-- 3. Упрощенные запросы
+-- 4. Лучшая производительность для чтения
+
+-- Пример: сравнение производительности
+-- Нормализованный запрос (множество JOIN)
+EXPLAIN ANALYZE
+SELECT 
+    o.order_id,
+    c.first_name || ' ' || c.last_name AS customer_name,
+    COUNT(oi.order_item_id) AS items_count,
+    SUM(oi.subtotal) AS total
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+JOIN order_items oi ON o.order_id = oi.order_id
+WHERE o.order_date >= CURRENT_DATE - INTERVAL '7 days'
+GROUP BY o.order_id, c.first_name, c.last_name;
+
+-- Денормализованный запрос (без JOIN)
+EXPLAIN ANALYZE
+SELECT 
+    order_id,
+    customer_name,
+    items_count,
+    total_amount
+FROM orders
+WHERE order_date >= CURRENT_DATE - INTERVAL '7 days';
+```
+
+## Паттерны проектирования схем
+
+### Один-ко-многим (One-to-Many)
+
+```sql
+-- Классический паттерн: один клиент - много заказов
+CREATE TABLE customers (
+    customer_id SERIAL PRIMARY KEY,
+    name VARCHAR(100)
+);
+
+CREATE TABLE orders (
+    order_id SERIAL PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(customer_id),
+    order_date DATE
+);
+```
+
+### Многие-ко-многим (Many-to-Many)
+
+```sql
+-- Студенты и курсы через связующую таблицу
+CREATE TABLE students (
+    student_id SERIAL PRIMARY KEY,
+    name VARCHAR(100)
+);
+
+CREATE TABLE courses (
+    course_id SERIAL PRIMARY KEY,
+    course_name VARCHAR(100)
+);
+
+CREATE TABLE enrollments (
+    student_id INTEGER REFERENCES students(student_id),
+    course_id INTEGER REFERENCES courses(course_id),
+    enrollment_date DATE DEFAULT CURRENT_DATE,
+    grade VARCHAR(2),
+    PRIMARY KEY (student_id, course_id)
+);
+```
+
+### Один-к-одному (One-to-One)
+
+```sql
+-- Разделение часто и редко используемых данных
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    email VARCHAR(100) UNIQUE,
+    password_hash VARCHAR(255)
+);
+
+-- Редко запрашиваемые профильные данные
+CREATE TABLE user_profiles (
+    user_id INTEGER PRIMARY KEY REFERENCES users(user_id),
+    bio TEXT,
+    avatar_url VARCHAR(500),
+    birth_date DATE,
+    last_login TIMESTAMPTZ
+);
+```
+
+### Иерархические данные (Self-Referencing)
+
+```sql
+-- Категории с подкатегориями
+CREATE TABLE categories (
+    category_id SERIAL PRIMARY KEY,
+    parent_id INTEGER REFERENCES categories(category_id),
+    name VARCHAR(100),
+    level INTEGER DEFAULT 0
+);
+
+-- Рекурсивный запрос для получения всего дерева
+WITH RECURSIVE category_tree AS (
+    SELECT category_id, name, parent_id, 0 AS level
+    FROM categories
+    WHERE parent_id IS NULL
+    
+    UNION ALL
+    
+    SELECT c.category_id, c.name, c.parent_id, ct.level + 1
+    FROM categories c
+    JOIN category_tree ct ON c.parent_id = ct.category_id
+)
+SELECT * FROM category_tree ORDER BY level, name;
+```
+
+### EAV (Entity-Attribute-Value)
+
+```sql
+-- Гибкие атрибуты для товаров
+CREATE TABLE products (
+    product_id SERIAL PRIMARY KEY,
+    name VARCHAR(200)
+);
+
+CREATE TABLE product_attributes (
+    product_id INTEGER REFERENCES products(product_id),
+    attribute_name VARCHAR(50),
+    attribute_value TEXT,
+    PRIMARY KEY (product_id, attribute_name)
+);
+
+-- Для ноутбука
+INSERT INTO product_attributes VALUES
+    (1, 'CPU', 'Intel i7'),
+    (1, 'RAM', '16GB'),
+    (1, 'Screen', '15.6"');
+
+-- Для футболки
+INSERT INTO product_attributes VALUES
+    (2, 'Size', 'L'),
+    (2, 'Color', 'Blue'),
+    (2, 'Material', 'Cotton');
+
+-- ⚠️ EAV: гибко, но сложно запрашивать
+-- Рассмотрите JSONB как альтернативу
+CREATE TABLE products_jsonb (
+    product_id SERIAL PRIMARY KEY,
+    name VARCHAR(200),
+    attributes JSONB
+);
+
+-- Гибкие атрибуты в JSONB
+INSERT INTO products_jsonb VALUES
+    (1, 'Laptop', '{"cpu": "Intel i7", "ram": "16GB", "screen": "15.6\""}'),
+    (2, 'T-Shirt', '{"size": "L", "color": "Blue", "material": "Cotton"}');
+
+-- Легко искать и индексировать
+CREATE INDEX idx_product_attrs ON products_jsonb USING GIN(attributes);
+
+SELECT * FROM products_jsonb 
+WHERE attributes @> '{"cpu": "Intel i7"}';
+```
+
+### Soft Delete (Мягкое удаление)
+
+```sql
+-- Вместо физического удаления используем флаг
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    email VARCHAR(100),
+    name VARCHAR(100),
+    is_deleted BOOLEAN DEFAULT FALSE,
+    deleted_at TIMESTAMPTZ,
+    deleted_by INTEGER
+);
+
+-- "Удаление" пользователя
+UPDATE users 
+SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = 1
+WHERE user_id = 100;
+
+-- Представление для активных пользователей
+CREATE VIEW active_users AS
+SELECT * FROM users WHERE is_deleted = FALSE;
+
+-- Частичный индекс для активных пользователей
+CREATE INDEX idx_active_users_email 
+ON users(email) WHERE is_deleted = FALSE;
+```
+
+### Temporal Data (Временные данные)
+
+```sql
+-- Хранение истории изменений
+CREATE TABLE product_prices (
+    price_id SERIAL PRIMARY KEY,
+    product_id INTEGER REFERENCES products(product_id),
+    price NUMERIC(10, 2),
+    valid_from TIMESTAMPTZ DEFAULT NOW(),
+    valid_to TIMESTAMPTZ DEFAULT '9999-12-31',
+    is_current BOOLEAN DEFAULT TRUE
+);
+
+-- При изменении цены
+CREATE OR REPLACE FUNCTION update_product_price(
+    p_product_id INTEGER,
+    p_new_price NUMERIC
+) RETURNS VOID AS $
+BEGIN
+    -- Закрыть текущую цену
+    UPDATE product_prices
+    SET valid_to = NOW(), is_current = FALSE
+    WHERE product_id = p_product_id AND is_current = TRUE;
+    
+    -- Добавить новую цену
+    INSERT INTO product_prices (product_id, price)
+    VALUES (p_product_id, p_new_price);
+END;
+$ LANGUAGE plpgsql;
+
+-- Получить текущую цену
+SELECT price FROM product_prices
+WHERE product_id = 1 AND is_current = TRUE;
+
+-- Получить цену на конкретную дату
+SELECT price FROM product_prices
+WHERE product_id = 1
+  AND valid_from <= '2024-01-15'::TIMESTAMPTZ
+  AND valid_to > '2024-01-15'::TIMESTAMPTZ;
+```
+
+## Антипаттерны проектирования
+
+### God Table (Божественная таблица)
+
+```sql
+-- ❌ ПЛОХО: все данные в одной таблице
+CREATE TABLE everything (
+    id SERIAL PRIMARY KEY,
+    user_email VARCHAR(100),
+    user_name VARCHAR(100),
+    user_address TEXT,
+    order_id INTEGER,
+    order_date DATE,
+    product_name VARCHAR(200),
+    product_price NUMERIC(10, 2),
+    quantity INTEGER,
+    review_text TEXT,
+    review_rating INTEGER
+    -- ... еще 50 колонок
+);
+
+-- Проблемы:
+-- 1. Массивное дублирование
+-- 2. NULL значения везде
+-- 3. Сложно обновлять
+-- 4. Низкая производительность
+ 
+-- ✅ ХОРОШО: Логически разбиваем одну таблицу на несколько таблиц
+
+```
+
+### EAV без необходимости
+
+```sql
+-- ❌ ПЛОХО: использование EAV для фиксированных атрибутов
+CREATE TABLE users_eav (
+    user_id INTEGER,
+    attribute_name VARCHAR(50),
+    attribute_value TEXT,
+    PRIMARY KEY (user_id, attribute_name)
+);
+
+-- Сложные запросы
+SELECT 
+    u1.attribute_value AS email,
+    u2.attribute_value AS name
+FROM users_eav u1
+JOIN users_eav u2 ON u1.user_id = u2.user_id
+WHERE u1.attribute_name = 'email'
+  AND u2.attribute_name = 'name';
+
+-- ✅ ХОРОШО: обычная таблица для известных атрибутов
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    email VARCHAR(100),
+    name VARCHAR(100),
+    extra_attributes JSONB  -- Для дополнительных данных
+);
+```
+
+### UUID Everywhere
+
+```sql
+-- ❌ Не всегда оптимально: UUID для всего
+CREATE TABLE orders (
+    order_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID,
+    -- ...
+);
+
+-- Проблемы:
+-- 1. Больше места (16 байт vs 4 или 8)
+-- 2. Медленнее индексы
+-- 3. Не удобно для людей
+
+-- ✅ Используйте UUID когда:
+-- - Распределенная система
+-- - Нужна безопасность (непредсказуемость ID)
+-- - Объединение данных из разных источников
+
+-- Для обычных случаев SERIAL достаточно
+CREATE TABLE orders (
+    order_id SERIAL PRIMARY KEY,
+    customer_id INTEGER,
+    -- ...
+);
+```
+
+### Полиморфные ассоциации
+
+```sql
+-- ❌ ПЛОХО: полиморфная связь без FK
+CREATE TABLE comments (
+    comment_id SERIAL PRIMARY KEY,
+    commentable_type VARCHAR(50),  -- 'Post', 'Photo', 'Video'
+    commentable_id INTEGER,        -- Нет FK!
+    content TEXT
+);
+
+-- Проблемы:
+-- 1. Нет referential integrity
+-- 2. Сложно обеспечить консистентность
+-- 3. Сложные запросы
+
+-- ✅ ЛУЧШЕ: отдельные таблицы
+CREATE TABLE post_comments (
+    comment_id SERIAL PRIMARY KEY,
+    post_id INTEGER REFERENCES posts(post_id),
+    content TEXT
+);
+
+CREATE TABLE photo_comments (
+    comment_id SERIAL PRIMARY KEY,
+    photo_id INTEGER REFERENCES photos(photo_id),
+    content TEXT
+);
+
+-- Или общая таблица через UNION view
+```
+
+### Избыточные индексы
+
+```sql
+-- ❌ ПЛОХО: индексы на каждую колонку
+CREATE INDEX idx1 ON users(email);
+CREATE INDEX idx2 ON users(first_name);
+CREATE INDEX idx3 ON users(last_name);
+CREATE INDEX idx4 ON users(city);
+CREATE INDEX idx5 ON users(country);
+-- ... 20 индексов
+
+-- Проблемы:
+-- 1. Замедление INSERT/UPDATE/DELETE
+-- 2. Лишнее место на диске
+-- 3. Больше обслуживания (VACUUM)
+
+-- ✅ ХОРОШО: индексы по необходимости
+CREATE INDEX idx_users_email ON users(email);  -- Частый поиск
+CREATE INDEX idx_users_name ON users(last_name, first_name);  -- Составной для сортировки
+
+-- Используйте pg_stat_user_indexes для анализа
+SELECT 
+    schemaname,
+    tablename,
+    indexname,
+    idx_scan,
+    pg_size_pretty(pg_relation_size(indexrelid)) AS size
+FROM pg_stat_user_indexes
+WHERE idx_scan = 0  -- Неиспользуемые индексы
+ORDER BY pg_relation_size(indexrelid) DESC;
+```
+
+## Инструменты и лучшие практики
+
+### Документирование схемы
+
+```sql
+-- Комментарии к таблицам и колонкам
+COMMENT ON TABLE customers IS 'Клиенты интернет-магазина';
+COMMENT ON COLUMN customers.customer_id IS 'Уникальный идентификатор клиента';
+COMMENT ON COLUMN customers.email IS 'Email для входа и уведомлений';
+
+-- Просмотр комментариев
+SELECT 
+    c.table_name,
+    c.column_name,
+    pgd.description
+FROM pg_catalog.pg_statio_all_tables st
+JOIN pg_catalog.pg_description pgd ON pgd.objoid = st.relid
+JOIN information_schema.columns c ON (
+    pgd.objsubid = c.ordinal_position 
+    AND c.table_schema = st.schemaname 
+    AND c.table_name = st.relname
+)
+WHERE st.relname = 'customers';
+```
+
+### Мониторинг здоровья схемы
+
+```sql
+-- Размеры таблиц
+SELECT 
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS total_size,
+    pg_size_pretty(pg_relation_size(schemaname||'.'||tablename)) AS table_size,
+    pg_size_pretty(pg_indexes_size(schemaname||'.'||tablename)) AS indexes_size
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
+LIMIT 20;
+
+-- Раздутие таблиц (bloat)
+SELECT 
+    schemaname,
+    tablename,
+    n_live_tup AS live_tuples,
+    n_dead_tup AS dead_tuples,
+    ROUND(100 * n_dead_tup / NULLIF(n_live_tup + n_dead_tup, 0), 2) AS dead_percentage
+FROM pg_stat_user_tables
+WHERE n_dead_tup > 1000
+ORDER BY dead_percentage DESC;
+
+-- Отсутствующие индексы для FK
+SELECT 
+    tc.table_name,
+    kcu.column_name,
+    ccu.table_name AS foreign_table_name,
+    ccu.column_name AS foreign_column_name
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name
+WHERE tc.constraint_type = 'FOREIGN KEY'
+  AND NOT EXISTS (
+      SELECT 1 FROM pg_indexes
+      WHERE tablename = tc.table_name
+        AND indexdef LIKE '%' || kcu.column_name || '%'
+  );
+```
+
+### Чек-лист проектирования
+
+```sql
+-- ✅ Чек-лист для ревью схемы БД:
+
+-- 1. Нормализация
+-- □ Нет дублирования данных?
+-- □ Каждая таблица имеет первичный ключ?
+-- □ Внешние ключи определены правильно?
+
+-- 2. Производительность
+-- □ Индексы на внешних ключах?
+-- □ Индексы на часто используемых в WHERE/ORDER BY колонках?
+-- □ Нет избыточных индексов?
+-- □ Партиционирование для больших таблиц?
+
+-- 3. Целостность
+-- □ NOT NULL для обязательных полей?
+-- □ CHECK constraints для валидации?
+-- □ UNIQUE constraints где необходимо?
+-- □ ON DELETE/UPDATE правила корректны?
+
+-- 4. Типы данных
+-- □ Правильные типы данных выбраны?
+-- □ VARCHAR вместо TEXT для ограниченных строк?
+-- □ NUMERIC для денег, не REAL/FLOAT?
+-- □ TIMESTAMPTZ для временных меток?
+
+-- 5. Именование
+-- □ Понятные имена таблиц и колонок?
+-- □ Консистентный стиль именования?
+-- □ Избегание зарезервированных слов?
+
+-- 6. Документация
+-- □ Комментарии к таблицам и колонкам?
+-- □ ER-диаграмма актуальна?
+-- □ Миграции версионированы?
+```
+
+### Золотое правило:
+
+> <br/> Нормализуйте до тех пор, пока не появится реальная проблема с производительностью, а затем денормализуйте осознанно и с пониманием последствий.

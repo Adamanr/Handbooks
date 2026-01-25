@@ -1,0 +1,1154 @@
+---
+id: module-08-search
+title: "Полнотекстовый поиск и работа с текстовыми данными"
+sidebar_label: "Полнотекстовый поиск и работа с текстовыми данными"
+sidebar_position: 8
+description: "Полное руководство по работе с полнотекстовым поиском и текстовыми данными"
+keywords: [postgresql, full-text-search]
+---
+
+# Полнотекстовый поиск и работа с текстовыми данными
+
+## Введение
+
+Полнотекстовый поиск (Full-Text Search, FTS) в PostgreSQL — это мощная встроенная система для поиска по текстовым данным, которая превосходит простой поиск через LIKE и регулярные выражения. PostgreSQL предоставляет продвинутые возможности для индексации, ранжирования и поиска текста с учетом морфологии, синонимов и релевантности.
+
+## Стандартные строковые функции
+
+```sql
+-- Создание тестовой таблицы
+CREATE TABLE articles (
+    article_id SERIAL PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    author VARCHAR(100),
+    published_date DATE,
+    tags TEXT[],
+    views_count INTEGER DEFAULT 0
+);
+
+-- Вставка тестовых данных
+INSERT INTO articles (title, content, author, published_date, tags) VALUES
+    ('Введение в PostgreSQL', 
+     'PostgreSQL — это мощная объектно-реляционная система управления базами данных. Она предоставляет широкие возможности для работы с данными.',
+     'Иван Петров', '2024-01-15', ARRAY['postgresql', 'database', 'tutorial']),
+    ('Оптимизация запросов в PostgreSQL',
+     'Оптимизация SQL запросов — критически важный навык для работы с большими объемами данных. В этой статье мы рассмотрим основные техники оптимизации.',
+     'Мария Сидорова', '2024-02-20', ARRAY['postgresql', 'optimization', 'performance']),
+    ('Работа с JSON в PostgreSQL',
+     'PostgreSQL отлично поддерживает JSON и JSONB типы данных, что делает его отличным выбором для хранения полуструктурированных данных.',
+     'Алексей Смирнов', '2024-03-10', ARRAY['postgresql', 'json', 'nosql']);
+
+-- Конкатенация строк
+SELECT 
+    title || ' - ' || author AS full_title,
+    CONCAT(title, ' (', author, ')') AS formatted_title
+FROM articles;
+
+-- Изменение регистра
+SELECT 
+    UPPER(title) AS uppercase,
+    LOWER(title) AS lowercase,
+    INITCAP(title) AS title_case
+FROM articles;
+
+-- Обрезка и дополнение
+SELECT 
+    TRIM('  PostgreSQL  ') AS trimmed,
+    LTRIM('  text') AS left_trimmed,
+    RTRIM('text  ') AS right_trimmed,
+    LPAD('42', 5, '0') AS padded_left,    -- '00042'
+    RPAD('42', 5, '0') AS padded_right;   -- '42000'
+
+-- Подстроки
+SELECT 
+    title,
+    SUBSTRING(title FROM 1 FOR 10) AS first_10_chars,
+    LEFT(title, 15) AS left_15,
+    RIGHT(title, 10) AS right_10,
+    SUBSTRING(title FROM '\w+') AS first_word  -- Регулярное выражение
+FROM articles;
+
+-- Длина строки
+SELECT 
+    title,
+    LENGTH(title) AS char_length,
+    CHAR_LENGTH(title) AS char_length2,
+    OCTET_LENGTH(title) AS byte_length,
+    BIT_LENGTH(title) AS bit_length
+FROM articles;
+
+-- Поиск подстроки
+SELECT 
+    title,
+    POSITION('PostgreSQL' IN title) AS position,
+    STRPOS(title, 'PostgreSQL') AS strpos_position
+FROM articles
+WHERE title LIKE '%PostgreSQL%';
+
+-- Замена
+SELECT 
+    REPLACE(title, 'PostgreSQL', 'Postgres') AS replaced,
+    OVERLAY(title PLACING 'SQL' FROM 1 FOR 4) AS overlayed
+FROM articles;
+```
+
+### Работа с массивами строк
+
+```sql
+-- Преобразование строки в массив
+SELECT 
+    string_to_array('PostgreSQL,MySQL,Oracle', ',') AS databases;
+
+-- Обратное преобразование
+SELECT 
+    array_to_string(ARRAY['PostgreSQL', 'MySQL', 'Oracle'], ', ') AS db_list;
+
+-- Работа с тегами
+SELECT 
+    title,
+    tags,
+    array_length(tags, 1) AS tag_count,
+    'postgresql' = ANY(tags) AS has_postgresql_tag,
+    tags @> ARRAY['postgresql'] AS contains_postgresql
+FROM articles;
+
+-- Объединение массивов
+SELECT 
+    array_cat(ARRAY['a', 'b'], ARRAY['c', 'd']) AS combined,
+    ARRAY['a', 'b'] || ARRAY['c', 'd'] AS concatenated;
+
+-- Уникальные элементы
+SELECT DISTINCT unnest(tags) AS unique_tag
+FROM articles
+ORDER BY unique_tag;
+```
+
+## Регулярные выражения
+
+**Регулярные выражения** (regular expressions, сокращённо **regex**, **regexp**, в русском просторечии — **регулярки**) — это специальный мини-язык (шаблон, паттерн), который описывает, **какие именно строки текста** нас интересуют.
+
+:::info Простыми словами
+это как **умная маска** или **трафарет**, который вы накладываете на текст, чтобы быстро найти, проверить или вытащить нужные куски.
+:::
+
+### Зачем нужны регулярные выражения
+
+- Проверить, правильно ли введён email / телефон / пароль / ИНН / номер карты
+- Найти все номера телефонов / даты / цены в большом тексте
+- Вытащить из логов только строки с ошибками 500
+- Заменить везде "colour" → "color" (или наоборот)
+- Разобрать HTML / JSON / CSV / логи, когда нет нормального парсера
+- Валидация полей в формах (почти везде в вебе)
+- Поиск и замена в редакторах кода (VS Code, IntelliJ, Notepad++)
+
+### Самые базовые символы 
+
+| Символ       | Что значит                              | Пример шаблона     | Что найдёт в тексте                              |
+|--------------|-----------------------------------------|--------------------|--------------------------------------------------|
+| `.`          | любой символ (кроме новой строки)       | `a.c`              | abc, a1c, a#c, a c (но не ac или abbc)          |
+| `\d`         | любая цифра (0–9)                       | `\d\d:\d\d`        | 09:41, 23:59                                     |
+| `\w`         | буква, цифра или _ (словесный символ)   | `\w+`              | hello123, user_name                              |
+| `\s`         | пробельный символ (пробел, таб, enter) | `\d\s\w+`          | 5 яблок, 9 котов                                 |
+| `*`          | 0 или больше раз                        | `go*gle`           | ggle, google, gooogle, goooooogle               |
+| `+`          | 1 или больше раз                        | `\d+`              | 1, 42, 1984, 123456                              |
+| `?`          | 0 или 1 раз (опционально)               | `colou?r`          | color, colour                                    |
+| `{n}`        | ровно n раз                             | `\d{4}`            | 2025, 1999 (но не 25 или 20256)                 |
+| `{n,m}`      | от n до m раз                           | `\d{2,4}`          | 12, 123, 1234 (но не 1 или 12345)               |
+| `^`          | начало строки                           | `^Hello`           | Hello world (но не "Say Hello")                  |
+| `$`          | конец строки                            | `world$`           | Hello world (но не "world!")                     |
+| `[]`         | любой символ из списка                  | `[А-Яа-я]`         | любая русская буква                              |
+| `[^ ]`       | любой символ НЕ из списка               | `[^0-9]`           | любая не-цифра                                   |
+| `\|`          | или                                     | `cat\|dog`          | cat или dog                                      |
+| `()`         | группа (захват)                         | `(\d{3})-(\d{3})`  | 123-456 → группа 1 = 123, группа 2 = 456        |
+
+### Реальные примеры
+
+| Задача                              | Регулярка (один из вариантов)                  | Что проверяет / находит                              |
+|-------------------------------------|------------------------------------------------|------------------------------------------------------|
+| Email (очень упрощённо)             | `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$` | anton@example.com, test.user@company.ru          |
+| Российский мобильный телефон        | `^(\+7\|8)?[\s-]?\(?9\d{2}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}$` | +79261234567, 8 (926) 123-45-67     |
+| Дата ГГГГ-ММ-ДД                     | `^\d{4}-\d{2}-\d{2}$`                          | 2026-01-25 (но не 2026-1-25 или 26.01.2025)         |
+| Только цифры                        | `^\d+$`                                        | 123456 (но не 123abc, не пустая строка)             |
+| Слово "error" или "failed" в логе   | `error\|failed` (регистр-чувствительно)         | найдет строки с этими словами                        |
+| IPv4 адрес (упрощённо)              | `^(?:(?:25[0-5]\|2[0-4]\d\|1?\d?\d)\.){3}(?:25[0-5]\|2[0-4]\d\|1?\d?\d)$` | 192.168.1.1, 10.0.0.138                             |
+
+
+### Примеры
+
+```sql
+-- Оператор соответствия ~
+SELECT title
+FROM articles
+WHERE title ~ 'PostgreSQL|Postgres';  -- Соответствует одному из вариантов
+
+-- Регистронезависимое соответствие ~*
+SELECT title
+FROM articles
+WHERE title ~* 'postgresql';
+
+-- Отрицание !~ и !~*
+SELECT title
+FROM articles
+WHERE title !~ 'JSON';
+
+-- Извлечение подстрок
+SELECT 
+    content,
+    SUBSTRING(content FROM '\d+') AS first_number,
+    SUBSTRING(content FROM 'PostgreSQL \w+' FOR '#') AS extracted
+FROM articles;
+
+-- regexp_match - возвращает массив совпадений
+SELECT 
+    title,
+    regexp_match(title, 'PostgreSQL|Postgres') AS match
+FROM articles;
+
+-- regexp_matches - все совпадения (с флагом 'g')
+SELECT 
+    title,
+    regexp_matches(title, '\w{10,}', 'g') AS long_words
+FROM articles;
+
+-- regexp_replace - замена по регулярному выражению
+SELECT 
+    content,
+    regexp_replace(content, '\s+', ' ', 'g') AS normalized  -- Множественные пробелы в один
+FROM articles;
+
+-- regexp_split_to_array - разбиение строки
+SELECT 
+    title,
+    regexp_split_to_array(title, '\s+') AS words
+FROM articles;
+
+-- regexp_split_to_table - разбиение в строки таблицы
+SELECT 
+    title,
+    regexp_split_to_table(title, '\s+') AS word
+FROM articles
+LIMIT 10;
+```
+
+
+
+## Основы полнотекстового поиска
+
+### Типы данных для FTS
+
+PostgreSQL использует два специальных типа данных для полнотекстового поиска:
+
+- **`tsvector`** — текстовый документ, подготовленный для поиска (индексированное представление)
+- **`tsquery`** — поисковый запрос
+
+```sql
+-- Преобразование текста в tsvector
+SELECT to_tsvector('english', 'The quick brown fox jumps over the lazy dog');
+-- Результат: 'brown':3 'dog':9 'fox':4 'jump':5 'lazi':8 'quick':2
+
+-- Обратите внимание:
+-- - Стоп-слова ('the', 'over') удалены
+-- - Слова приведены к базовой форме (jumps → jump, lazy → lazi)
+-- - Сохранена позиция каждого слова
+
+-- Преобразование поискового запроса в tsquery
+SELECT to_tsquery('english', 'fox & dog');
+-- Результат: 'fox' & 'dog'
+
+-- Поиск с помощью оператора @@
+SELECT to_tsvector('english', 'The quick brown fox') @@ to_tsquery('english', 'fox');
+-- Результат: true
+```
+
+### Базовый поиск
+
+```sql
+-- Простой поиск по содержимому
+SELECT title, author
+FROM articles
+WHERE to_tsvector('russian', content) @@ to_tsquery('russian', 'PostgreSQL');
+
+-- Поиск по нескольким полям
+SELECT 
+    title,
+    author,
+    published_date
+FROM articles
+WHERE to_tsvector('russian', title || ' ' || content) @@ to_tsquery('russian', 'PostgreSQL');
+
+-- Поиск с использованием нескольких слов (AND)
+SELECT title
+FROM articles
+WHERE to_tsvector('russian', content) @@ to_tsquery('russian', 'PostgreSQL & оптимизация');
+
+-- Поиск с OR
+SELECT title
+FROM articles
+WHERE to_tsvector('russian', content) @@ to_tsquery('russian', 'PostgreSQL | MySQL');
+
+-- Поиск с отрицанием
+SELECT title
+FROM articles
+WHERE to_tsvector('russian', content) @@ to_tsquery('russian', 'PostgreSQL & !JSON');
+
+-- Поиск фразы (слова рядом)
+SELECT title
+FROM articles
+WHERE to_tsvector('russian', content) @@ to_tsquery('russian', 'PostgreSQL <-> базы');
+```
+
+### Различные операторы tsquery
+
+```sql
+-- & (AND) - оба слова должны присутствовать
+SELECT to_tsquery('russian', 'PostgreSQL & база');
+
+-- | (OR) - одно из слов должно присутствовать
+SELECT to_tsquery('russian', 'PostgreSQL | MySQL');
+
+-- ! (NOT) - слово не должно присутствовать
+SELECT to_tsquery('russian', 'база & !MySQL');
+
+-- <-> (FOLLOWED BY) - слова должны идти подряд
+SELECT to_tsquery('russian', 'PostgreSQL <-> база');
+
+-- <N> - слова на расстоянии N
+SELECT to_tsquery('russian', 'PostgreSQL <2> данных');  -- Макс. 2 слова между
+
+-- Группировка с помощью скобок
+SELECT to_tsquery('russian', '(PostgreSQL | MySQL) & оптимизация');
+```
+
+### plainto_tsquery и phraseto_tsquery
+
+```sql
+-- plainto_tsquery - автоматически создает запрос из обычного текста
+SELECT plainto_tsquery('russian', 'PostgreSQL база данных');
+-- Результат: 'postgr' & 'баз' & 'данн'
+
+-- phraseto_tsquery - создает запрос для поиска фразы
+SELECT phraseto_tsquery('russian', 'PostgreSQL база данных');
+-- Результат: 'postgr' <-> 'баз' <-> 'данн'
+
+-- websearch_to_tsquery - Google-like синтаксис
+SELECT websearch_to_tsquery('russian', 'PostgreSQL OR MySQL -Oracle "база данных"');
+-- Поддерживает: OR, AND, NOT (-), кавычки для фраз
+
+-- Примеры использования
+SELECT title
+FROM articles
+WHERE to_tsvector('russian', content) @@ plainto_tsquery('russian', 'PostgreSQL оптимизация');
+
+SELECT title
+FROM articles
+WHERE to_tsvector('russian', content) @@ websearch_to_tsquery('russian', 'PostgreSQL OR MySQL');
+```
+
+## Конфигурации и языки
+
+### Языковые конфигурации
+
+PostgreSQL поддерживает множество языков для полнотекстового поиска.
+
+```sql
+-- Просмотр доступных конфигураций
+SELECT cfgname FROM pg_ts_config;
+
+-- Установка конфигурации по умолчанию
+SET default_text_search_config = 'pg_catalog.russian';
+
+-- Или в postgresql.conf:
+-- default_text_search_config = 'pg_catalog.russian'
+
+-- Использование конкретной конфигурации
+SELECT to_tsvector('russian', 'Быстрая коричневая лиса прыгает через ленивую собаку');
+SELECT to_tsvector('english', 'The quick brown fox jumps over the lazy dog');
+
+-- Сравнение результатов разных языков
+SELECT 
+    to_tsvector('english', 'I am running fast') AS english,
+    to_tsvector('simple', 'I am running fast') AS simple;
+/*
+english: 'fast':4 'run':3
+simple: 'am':2 'fast':4 'i':1 'running':3
+*/
+```
+
+### Создание пользовательской конфигурации
+
+```sql
+-- Создание собственной конфигурации на базе существующей
+CREATE TEXT SEARCH CONFIGURATION my_russian (COPY = russian);
+
+-- Изменение конфигурации
+ALTER TEXT SEARCH CONFIGURATION my_russian
+    ALTER MAPPING FOR word WITH russian_stem, simple;
+
+-- Использование пользовательской конфигурации
+SELECT to_tsvector('my_russian', 'Тестовый текст для поиска');
+```
+
+### Стоп-слова
+
+**Стоп-слова** (stop words) — это **часто встречающиеся, малозначимые слова**, которые **игнорируются** при полнотекстовом поиске (full-text search).
+
+Они не попадают в индекс `tsvector` и не учитываются в запросах `tsquery`, потому что их наличие почти не влияет на смысл поиска. Это ускоряет поиск и уменьшает размер индекса.
+
+#### Примеры стоп-слов (зависит от языка)
+
+| Язык     | Типичные стоп-слова (примеры)                          |
+|----------|--------------------------------------------------------|
+| русский  | и, в, на, с, по, для, не, что, это, из, как, а, но, или, от, к, у, об, до, без |
+| английский | the, a, an, and, or, but, in, on, at, to, of, for, with, by, is, are, was, were |
+| немецкий | der, die, das, und, in, mit, zu, von, für, auf, bei, an, aus, nach, über |
+
+Полный список для каждого языка лежит в файлах конфигурации словарей PostgreSQL, например:
+
+- `/usr/share/postgresql/.../russian.stop` (для русского)
+- `/usr/share/postgresql/.../english.stop` (для английского)
+
+#### Как это работает на практике
+
+```sql
+-- Текст → tsvector (с учётом стоп-слов)
+SELECT to_tsvector('russian', 'Это очень важный документ о качестве продукции и сервисе');
+-- Результат: 'важн':3 'документ':4 'качеств':6 'продукц':8 'сервис':10
+
+-- Стоп-слова "это", "очень", "о", "и" — исчезли
+```
+
+```sql
+-- Запрос с учётом стоп-слов
+SELECT *
+FROM articles
+WHERE to_tsvector('russian', content) @@ to_tsquery('russian', 'качество & сервис');
+-- найдёт статьи, где есть и "качество", и "сервис" (в любом порядке, с учётом морфологии)
+```
+
+А вот если вы ищете фразу с стоп-словами — поведение особое:
+
+```sql
+SELECT to_tsquery('russian', 'качество и сервис');
+-- → 'качеств' & 'сервис'   ← "и" исчезло → становится AND
+
+SELECT phraseto_tsquery('russian', 'качество и сервис');
+-- → 'качеств' <-> 'сервис'  ← сохраняется порядок, но "и" → <-> (следующее слово рядом)
+```
+
+#### Когда стоп-слова мешают и что делать
+
+| Ситуация                              | Проблема                                      | Решения / обходные пути                                      |
+|---------------------------------------|-----------------------------------------------|----------------------------------------------------------------|
+| Нужно искать фразы вроде "вКонтакте" | "в" — стоп-слово → поиск ломается            | Использовать `phraseto_tsquery` или `websearch_to_tsquery`    |
+| Хотите индексировать стоп-слова       | Нельзя просто так отключить                   | 1. Создать свой словарь без стоп-слов<br/>2. Искать по `plainto_tsquery` + `websearch_to_tsquery`<br/>3. Предобработать текст (удалить стоп-слова вручную) |
+| Поиск по коротким запросам ("и это")  | Ничего не найдёт                              | Использовать `websearch_to_tsquery` (он меньше полагается на стоп-слова) |
+
+#### Как посмотреть или создать собственный список стоп-слов
+
+```sql
+-- Просмотр стоп-слов для языка
+SELECT * FROM pg_ts_dict WHERE dictname = 'russian_stem';
+
+-- Создание собственного словаря стоп-слов
+CREATE TEXT SEARCH DICTIONARY russian_stop (
+    TEMPLATE = pg_catalog.simple,
+    STOPWORDS = russian
+);
+
+-- Слова будут игнорироваться при индексации
+```
+
+### Автоматическое обновление tsvector
+
+```sql
+-- Создание триггера для автоматического обновления
+CREATE FUNCTION articles_tsv_trigger() RETURNS trigger AS $$
+BEGIN
+    NEW.content_tsv := 
+        setweight(to_tsvector('russian', coalesce(NEW.title, '')), 'A') ||
+        setweight(to_tsvector('russian', coalesce(NEW.content, '')), 'B') ||
+        setweight(to_tsvector('russian', coalesce(NEW.author, '')), 'C');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER tsvectorupdate BEFORE INSERT OR UPDATE
+ON articles FOR EACH ROW EXECUTE FUNCTION articles_tsv_trigger();
+
+-- Теперь при вставке или обновлении content_tsv обновится автоматически
+INSERT INTO articles (title, content, author, published_date)
+VALUES ('Новая статья', 'Содержимое новой статьи о PostgreSQL', 'Автор', CURRENT_DATE);
+
+-- Проверка
+SELECT title, content_tsv FROM articles WHERE title = 'Новая статья';
+```
+
+### Весовые коэффициенты (weighting)
+
+```sql
+-- Установка весов для разных частей документа
+-- A (самый важный), B, C, D (наименее важный)
+
+UPDATE articles
+SET content_tsv = 
+    setweight(to_tsvector('russian', title), 'A') ||
+    setweight(to_tsvector('russian', content), 'B') ||
+    setweight(to_tsvector('russian', coalesce(author, '')), 'C');
+
+-- Поиск с учетом весов
+SELECT 
+    title,
+    ts_rank(content_tsv, query) AS rank
+FROM articles, to_tsquery('russian', 'PostgreSQL') query
+WHERE content_tsv @@ query
+ORDER BY rank DESC;
+```
+
+## Ранжирование результатов
+
+**Ранжирование (ranking)** — это процесс упорядочивания строк результата запроса по определённому критерию (или нескольким критериям) от «лучшего» к «худшему» или наоборот.
+
+### ts_rank - базовое ранжирование
+
+```sql
+-- Простое ранжирование
+SELECT 
+    title,
+    ts_rank(content_tsv, to_tsquery('russian', 'PostgreSQL')) AS rank
+FROM articles
+WHERE content_tsv @@ to_tsquery('russian', 'PostgreSQL')
+ORDER BY rank DESC;
+
+-- ts_rank с учетом весов документа
+SELECT 
+    title,
+    ts_rank(
+        content_tsv,
+        to_tsquery('russian', 'PostgreSQL'),
+        1  -- Нормализация: 1 - делить на длину документа
+    ) AS rank
+FROM articles
+WHERE content_tsv @@ to_tsquery('russian', 'PostgreSQL')
+ORDER BY rank DESC;
+
+-- Различные методы нормализации (битовая маска):
+-- 0 (по умолчанию): игнорировать длину документа
+-- 1: делить ранг на (1 + логарифм длины документа)
+-- 2: делить ранг на длину документа
+-- 4: делить ранг на среднее гармоническое расстояний между совпадениями
+-- 8: делить ранг на количество уникальных слов в документе
+-- 16: делить ранг на 1 + логарифм количества уникальных слов
+-- 32: делить ранг на rank + 1
+```
+
+### ts_rank_cd - ранжирование с учетом близости
+
+```sql
+-- ts_rank_cd учитывает расстояние между словами запроса
+SELECT 
+    title,
+    ts_rank_cd(content_tsv, to_tsquery('russian', 'PostgreSQL & база')) AS rank_cd,
+    ts_rank(content_tsv, to_tsquery('russian', 'PostgreSQL & база')) AS rank
+FROM articles
+WHERE content_tsv @@ to_tsquery('russian', 'PostgreSQL & база')
+ORDER BY rank_cd DESC;
+
+-- Слова, стоящие рядом, получат более высокий рейтинг
+```
+
+### Пользовательское ранжирование
+
+```sql
+-- Комбинированное ранжирование с учетом популярности
+SELECT 
+    title,
+    views_count,
+    ts_rank(content_tsv, query) AS text_rank,
+    -- Комбинированный рейтинг
+    ts_rank(content_tsv, query) * LOG(views_count + 1) AS combined_rank
+FROM articles, to_tsquery('russian', 'PostgreSQL') query
+WHERE content_tsv @@ query
+ORDER BY combined_rank DESC;
+
+-- Учет даты публикации (свежесть)
+SELECT 
+    title,
+    published_date,
+    ts_rank(content_tsv, query) AS text_rank,
+    EXTRACT(EPOCH FROM AGE(CURRENT_DATE, published_date)) / 86400 AS days_old,
+    -- Свежие статьи получают бонус
+    ts_rank(content_tsv, query) / (1 + EXTRACT(EPOCH FROM AGE(CURRENT_DATE, published_date)) / 86400 / 30) AS time_adjusted_rank
+FROM articles, to_tsquery('russian', 'PostgreSQL') query
+WHERE content_tsv @@ query
+ORDER BY time_adjusted_rank DESC;
+```
+
+## Подсветка результатов
+
+### ts_headline - выделение совпадений
+
+```sql
+-- Базовая подсветка
+SELECT 
+    title,
+    ts_headline(
+        'russian',
+        content,
+        to_tsquery('russian', 'PostgreSQL'),
+        'StartSel=<b>, StopSel=</b>'
+    ) AS highlighted
+FROM articles
+WHERE content_tsv @@ to_tsquery('russian', 'PostgreSQL');
+
+-- С дополнительными опциями
+SELECT 
+    title,
+    ts_headline(
+        'russian',
+        content,
+        to_tsquery('russian', 'PostgreSQL & данных'),
+        'StartSel=<mark>, StopSel=</mark>, MaxWords=50, MinWords=25, ShortWord=3'
+    ) AS snippet
+FROM articles
+WHERE content_tsv @@ to_tsquery('russian', 'PostgreSQL & данных');
+
+-- Опции ts_headline:
+-- StartSel, StopSel - теги начала и конца выделения
+-- MaxWords - максимум слов в сниппете
+-- MinWords - минимум слов в сниппете
+-- ShortWord - длина "короткого" слова (не учитывается при подсчете)
+-- HighlightAll - подсветить все вхождения (по умолчанию false)
+-- MaxFragments - количество фрагментов (по умолчанию 0 - один фрагмент)
+-- FragmentDelimiter - разделитель между фрагментами
+```
+
+### Множественные фрагменты
+
+```sql
+-- Показать несколько релевантных фрагментов
+SELECT 
+    title,
+    ts_headline(
+        'russian',
+        content,
+        to_tsquery('russian', 'PostgreSQL'),
+        'MaxFragments=3, FragmentDelimiter= ... '
+    ) AS snippets
+FROM articles
+WHERE content_tsv @@ to_tsquery('russian', 'PostgreSQL');
+```
+
+## Продвинутые техники
+
+### Fuzzy поиск (нечеткий поиск)
+
+PostgreSQL поддерживает нечеткий поиск через расширение pg_trgm.
+
+```sql
+-- Установка расширения
+CREATE EXTENSION pg_trgm;
+
+-- Поиск похожих слов (триграммы)
+SELECT 
+    title,
+    similarity(title, 'PostgreSQL') AS similarity
+FROM articles
+ORDER BY similarity DESC
+LIMIT 5;
+
+-- Оператор % для поиска похожих строк
+SELECT title
+FROM articles
+WHERE title % 'Postgre';  -- Найдет "PostgreSQL"
+
+-- Комбинация с полнотекстовым поиском
+SELECT DISTINCT
+    title,
+    similarity(title, 'Postgre') AS sim
+FROM articles
+WHERE title % 'Postgre'
+   OR content_tsv @@ to_tsquery('russian', 'PostgreSQL')
+ORDER BY sim DESC;
+
+-- GIN индекс для триграмм (ускоряет % и similarity)
+CREATE INDEX idx_articles_title_trgm ON articles USING GIN(title gin_trgm_ops);
+CREATE INDEX idx_articles_content_trgm ON articles USING GIN(content gin_trgm_ops);
+
+-- LIKE с индексом триграмм
+SELECT title
+FROM articles
+WHERE title ILIKE '%postgre%';  -- Будет использовать индекс триграмм
+```
+
+### Фонетический поиск
+
+```sql
+-- Установка расширения fuzzystrmatch
+CREATE EXTENSION fuzzystrmatch;
+
+-- Soundex — старый американский фонетический алгоритм. Преобразует слово в 4-символьный код по звучанию (первые буквы + гласные/согласные)
+-- Здесь проверяет, звучат ли "PostgreSQL" и "Postgres" примерно одинаково (да, коды совпадают → true)
+SELECT 
+    soundex('PostgreSQL') = soundex('Postgres') AS sounds_similar;
+
+-- Metaphone — более точный фонетический алгоритм (лучше Soundex)
+-- Возвращает строку-код длиной до 10 символов, описывающий произношение
+-- Если коды одинаковые или очень похожие → слова звучат похоже
+SELECT 
+    metaphone('PostgreSQL', 10) AS meta1,
+    metaphone('Postgres', 10) AS meta2;
+
+-- Levenshtein (расстояние редактирования) — считает минимальное число операций (вставка/удаление/замена символа), чтобы превратить одну строку в другую
+-- Чем меньше число (distance) → тем строки похожи
+-- Пример: "PostgreSQL" → "PostgresQL" = расстояние 1 (одна лишняя 'e')
+SELECT 
+    title,
+    levenshtein(title, 'PostgreSQL Optimization') AS distance
+FROM articles
+ORDER BY distance
+LIMIT 5;
+
+-- Поиск с учетом опечаток
+SELECT title
+FROM articles
+WHERE levenshtein(lower(title), lower('Postgre SQL')) <= 3;
+```
+
+### Поиск по словоформам (стемминг)
+
+:::info Стемминг
+**Сте́мминг** — это процесс нахождения основы слова для заданного исходного слова. Основа слова не обязательно совпадает с морфологическим корнем слова
+:::
+
+```sql
+-- Создание собственного словаря стемминга
+CREATE TEXT SEARCH DICTIONARY my_stem (
+    TEMPLATE = snowball,
+    Language = russian
+);
+
+-- Проверка стемминга
+SELECT ts_lexize('my_stem', 'бежать');    -- бег
+SELECT ts_lexize('my_stem', 'бегу');      -- бег
+SELECT ts_lexize('my_stem', 'бежал');     -- бежа
+
+-- Все формы приведутся к базовой при индексации
+```
+
+### Поиск с синонимами
+
+```sql
+-- Создание файла синонимов (на сервере)
+-- /usr/share/postgresql/tsearch_data/synonyms.syn:
+-- postgres    postgresql pgsql
+-- db          database
+
+-- Создание словаря синонимов
+CREATE TEXT SEARCH DICTIONARY syn (
+    TEMPLATE = synonym,
+    SYNONYMS = synonyms
+);
+
+-- Настройка конфигурации для использования синонимов
+CREATE TEXT SEARCH CONFIGURATION syn_config (COPY = russian);
+ALTER TEXT SEARCH CONFIGURATION syn_config
+    ALTER MAPPING FOR asciiword WITH syn, russian_stem;
+
+-- Теперь поиск по "postgres" найдет "postgresql"
+SELECT to_tsvector('syn_config', 'Статья про postgres');
+-- Результат включит 'postgresql'
+```
+
+## Практические примеры
+
+### Поисковая система для блога
+
+```sql
+-- Создание таблиц
+CREATE TABLE blog_posts (
+    post_id SERIAL PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    slug VARCHAR(200) UNIQUE NOT NULL,
+    content TEXT NOT NULL,
+    excerpt TEXT,
+    author_id INTEGER,
+    category_id INTEGER,
+    published_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    views_count INTEGER DEFAULT 0,
+    search_vector tsvector
+);
+
+CREATE TABLE blog_categories (
+    category_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    slug VARCHAR(100) UNIQUE NOT NULL
+);
+
+CREATE TABLE blog_tags (
+    tag_id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE
+);
+
+CREATE TABLE post_tags (
+    post_id INTEGER REFERENCES blog_posts(post_id),
+    tag_id INTEGER REFERENCES blog_tags(tag_id),
+    PRIMARY KEY (post_id, tag_id)
+);
+
+-- Функция для обновления search_vector
+CREATE OR REPLACE FUNCTION blog_search_vector_update() RETURNS trigger AS $$
+BEGIN
+    NEW.search_vector := 
+        setweight(to_tsvector('russian', coalesce(NEW.title, '')), 'A') ||
+        setweight(to_tsvector('russian', coalesce(NEW.excerpt, '')), 'B') ||
+        setweight(to_tsvector('russian', coalesce(NEW.content, '')), 'C') ||
+        setweight(to_tsvector('russian', coalesce(
+            (SELECT string_agg(bt.name, ' ') 
+             FROM post_tags pt 
+             JOIN blog_tags bt ON pt.tag_id = bt.tag_id 
+             WHERE pt.post_id = NEW.post_id), '')), 'D');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER blog_search_trigger 
+BEFORE INSERT OR UPDATE ON blog_posts
+FOR EACH ROW EXECUTE FUNCTION blog_search_vector_update();
+
+-- GIN индекс
+CREATE INDEX idx_blog_search ON blog_posts USING GIN(search_vector);
+
+-- Индекс для популярных постов
+CREATE INDEX idx_blog_views ON blog_posts(views_count DESC);
+
+-- Поисковая функция
+CREATE OR REPLACE FUNCTION search_blog(
+    search_query TEXT,
+    limit_count INTEGER DEFAULT 10,
+    offset_count INTEGER DEFAULT 0
+)
+RETURNS TABLE(
+    post_id INTEGER,
+    title VARCHAR,
+    excerpt TEXT,
+    slug VARCHAR,
+    published_at TIMESTAMPTZ,
+    rank REAL,
+    headline TEXT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        bp.post_id,
+        bp.title,
+        bp.excerpt,
+        bp.slug,
+        bp.published_at,
+        ts_rank(
+            bp.search_vector, 
+            websearch_to_tsquery('russian', search_query),
+            1  -- Нормализация
+        )::REAL AS rank,
+        ts_headline(
+            'russian',
+            bp.content,
+            websearch_to_tsquery('russian', search_query),
+            'StartSel=<mark>, StopSel=</mark>, MaxWords=50, MinWords=25'
+        ) AS headline
+    FROM blog_posts bp
+    WHERE bp.search_vector @@ websearch_to_tsquery('russian', search_query)
+      AND bp.published_at IS NOT NULL
+    ORDER BY rank DESC, bp.views_count DESC
+    LIMIT limit_count
+    OFFSET offset_count;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- Использование
+SELECT * FROM search_blog('PostgreSQL оптимизация', 10, 0);
+```
+
+### Автодополнение (Autocomplete)
+
+```sql
+-- Таблица для популярных поисковых запросов
+CREATE TABLE search_queries (
+    query_id SERIAL PRIMARY KEY,
+    query_text VARCHAR(200) UNIQUE NOT NULL,
+    search_count INTEGER DEFAULT 1,
+    last_searched TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Индекс для префиксного поиска
+CREATE INDEX idx_search_queries_prefix ON search_queries USING GIN
+-- Индекс для префиксного поиска
+CREATE INDEX idx_search_queries_prefix ON search_queries USING GIN(query_text gin_trgm_ops);
+
+-- Функция для автодополнения
+CREATE OR REPLACE FUNCTION autocomplete_search(
+    prefix TEXT,
+    max_results INTEGER DEFAULT 10
+)
+RETURNS TABLE(
+    suggestion VARCHAR,
+    popularity INTEGER
+) AS $
+BEGIN
+    RETURN QUERY
+    SELECT 
+        sq.query_text,
+        sq.search_count
+    FROM search_queries sq
+    WHERE sq.query_text ILIKE prefix || '%'
+       OR sq.query_text % prefix  -- Нечеткое совпадение
+    ORDER BY 
+        sq.search_count DESC,
+        similarity(sq.query_text, prefix) DESC
+    LIMIT max_results;
+END;
+$ LANGUAGE plpgsql STABLE;
+
+-- Функция для логирования поисковых запросов
+CREATE OR REPLACE FUNCTION log_search_query(search_text TEXT)
+RETURNS VOID AS $
+BEGIN
+    INSERT INTO search_queries (query_text, search_count, last_searched)
+    VALUES (search_text, 1, NOW())
+    ON CONFLICT (query_text) 
+    DO UPDATE SET 
+        search_count = search_queries.search_count + 1,
+        last_searched = NOW();
+END;
+$ LANGUAGE plpgsql;
+
+-- Использование
+SELECT log_search_query('PostgreSQL полнотекстовый поиск');
+SELECT * FROM autocomplete_search('Post');
+```
+
+### Многоязычный поиск
+
+```sql
+-- Таблица с поддержкой нескольких языков
+CREATE TABLE multilang_articles (
+    article_id SERIAL PRIMARY KEY,
+    title_en TEXT,
+    content_en TEXT,
+    title_ru TEXT,
+    content_ru TEXT,
+    tsv_en tsvector,
+    tsv_ru tsvector,
+    published_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Триггеры для каждого языка
+CREATE OR REPLACE FUNCTION update_multilang_tsv() RETURNS trigger AS $
+BEGIN
+    NEW.tsv_en := 
+        setweight(to_tsvector('english', coalesce(NEW.title_en, '')), 'A') ||
+        setweight(to_tsvector('english', coalesce(NEW.content_en, '')), 'B');
+    
+    NEW.tsv_ru := 
+        setweight(to_tsvector('russian', coalesce(NEW.title_ru, '')), 'A') ||
+        setweight(to_tsvector('russian', coalesce(NEW.content_ru, '')), 'B');
+    
+    RETURN NEW;
+END;
+$ LANGUAGE plpgsql;
+
+CREATE TRIGGER multilang_tsv_trigger 
+BEFORE INSERT OR UPDATE ON multilang_articles
+FOR EACH ROW EXECUTE FUNCTION update_multilang_tsv();
+
+-- Индексы для каждого языка
+CREATE INDEX idx_articles_en ON multilang_articles USING GIN(tsv_en);
+CREATE INDEX idx_articles_ru ON multilang_articles USING GIN(tsv_ru);
+
+-- Функция поиска с автоопределением языка
+CREATE OR REPLACE FUNCTION search_multilang(
+    search_query TEXT,
+    lang VARCHAR DEFAULT 'auto'
+)
+RETURNS TABLE(
+    article_id INTEGER,
+    title TEXT,
+    content TEXT,
+    language VARCHAR,
+    rank REAL
+) AS $
+DECLARE
+    detected_lang VARCHAR;
+BEGIN
+    -- Простое определение языка по кириллице
+    IF lang = 'auto' THEN
+        detected_lang := CASE 
+            WHEN search_query ~ '[а-яА-Я]' THEN 'russian'
+            ELSE 'english'
+        END;
+    ELSE
+        detected_lang := lang;
+    END IF;
+    
+    RETURN QUERY
+    SELECT 
+        ma.article_id,
+        CASE detected_lang 
+            WHEN 'russian' THEN ma.title_ru 
+            ELSE ma.title_en 
+        END AS title,
+        CASE detected_lang 
+            WHEN 'russian' THEN ma.content_ru 
+            ELSE ma.content_en 
+        END AS content,
+        detected_lang AS language,
+        CASE detected_lang
+            WHEN 'russian' THEN ts_rank(ma.tsv_ru, websearch_to_tsquery('russian', search_query))
+            ELSE ts_rank(ma.tsv_en, websearch_to_tsquery('english', search_query))
+        END::REAL AS rank
+    FROM multilang_articles ma
+    WHERE CASE detected_lang
+        WHEN 'russian' THEN ma.tsv_ru @@ websearch_to_tsquery('russian', search_query)
+        ELSE ma.tsv_en @@ websearch_to_tsquery('english', search_query)
+    END
+    ORDER BY rank DESC;
+END;
+$ LANGUAGE plpgsql;
+
+-- Использование
+SELECT * FROM search_multilang('database optimization');  -- Английский
+SELECT * FROM search_multilang('оптимизация базы данных');  -- Русский
+```
+
+### Поиск по файлам и документам
+
+```sql
+-- Таблица для хранения документов
+CREATE TABLE documents (
+    document_id SERIAL PRIMARY KEY,
+    filename VARCHAR(255) NOT NULL,
+    file_type VARCHAR(50),
+    file_size BIGINT,
+    extracted_text TEXT,
+    metadata JSONB,
+    uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+    search_vector tsvector
+);
+
+-- Триггер для индексации
+CREATE OR REPLACE FUNCTION document_search_trigger() RETURNS trigger AS $
+BEGIN
+    NEW.search_vector := 
+        setweight(to_tsvector('russian', coalesce(NEW.filename, '')), 'A') ||
+        setweight(to_tsvector('russian', coalesce(NEW.extracted_text, '')), 'B') ||
+        setweight(to_tsvector('russian', coalesce(NEW.metadata->>'title', '')), 'A') ||
+        setweight(to_tsvector('russian', coalesce(NEW.metadata->>'description', '')), 'C');
+    RETURN NEW;
+END;
+$ LANGUAGE plpgsql;
+
+CREATE TRIGGER document_search_update 
+BEFORE INSERT OR UPDATE ON documents
+FOR EACH ROW EXECUTE FUNCTION document_search_trigger();
+
+-- Индексы
+CREATE INDEX idx_documents_search ON documents USING GIN(search_vector);
+CREATE INDEX idx_documents_type ON documents(file_type);
+CREATE INDEX idx_documents_metadata ON documents USING GIN(metadata);
+
+-- Поиск с фильтрацией по типу файла
+CREATE OR REPLACE FUNCTION search_documents(
+    search_query TEXT,
+    file_types TEXT[] DEFAULT NULL,
+    limit_count INTEGER DEFAULT 20
+)
+RETURNS TABLE(
+    document_id INTEGER,
+    filename VARCHAR,
+    file_type VARCHAR,
+    snippet TEXT,
+    rank REAL
+) AS $
+BEGIN
+    RETURN QUERY
+    SELECT 
+        d.document_id,
+        d.filename,
+        d.file_type,
+        ts_headline(
+            'russian',
+            coalesce(d.extracted_text, ''),
+            websearch_to_tsquery('russian', search_query),
+            'MaxWords=30, MinWords=15'
+        ) AS snippet,
+        ts_rank(d.search_vector, websearch_to_tsquery('russian', search_query))::REAL AS rank
+    FROM documents d
+    WHERE d.search_vector @@ websearch_to_tsquery('russian', search_query)
+      AND (file_types IS NULL OR d.file_type = ANY(file_types))
+    ORDER BY rank DESC
+    LIMIT limit_count;
+END;
+$ LANGUAGE plpgsql;
+
+-- Использование
+SELECT * FROM search_documents('договор аренды', ARRAY['pdf', 'docx']);
+```
+
+## Лучшие практики
+
+### DO's (Делать)
+
+```sql
+-- ✅ Используйте отдельную колонку tsvector для индексации
+ALTER TABLE articles ADD COLUMN search_tsv tsvector;
+
+-- ✅ Применяйте веса для разных частей документа
+setweight(to_tsvector('russian', title), 'A') ||
+setweight(to_tsvector('russian', content), 'B')
+
+-- ✅ Используйте websearch_to_tsquery для пользовательских запросов
+WHERE search_tsv @@ websearch_to_tsquery('russian', user_query)
+
+-- ✅ Добавляйте ранжирование для сортировки результатов
+ORDER BY ts_rank(search_tsv, query) DESC
+
+-- ✅ Используйте ts_headline для подсветки
+ts_headline('russian', content, query, 'MaxWords=50')
+```
+
+### DON'Ts (Не делать)
+
+```sql
+-- ❌ Не создавайте tsvector на лету в WHERE
+-- Плохо:
+SELECT * FROM articles 
+WHERE to_tsvector('russian', content) @@ to_tsquery('russian', 'text');
+
+-- Хорошо:
+SELECT * FROM articles 
+WHERE search_tsv @@ to_tsquery('russian', 'text');
+
+-- ❌ Не используйте LIKE для полнотекстового поиска
+-- Плохо:
+SELECT * FROM articles WHERE content LIKE '%PostgreSQL%';
+
+-- Хорошо:
+SELECT * FROM articles WHERE search_tsv @@ to_tsquery('russian', 'PostgreSQL');
+
+-- ❌ Не игнорируйте нормализацию и ранжирование
+-- Плохо:
+SELECT * FROM articles WHERE search_tsv @@ query;
+
+-- Хорошо:
+SELECT * FROM articles 
+WHERE search_tsv @@ query
+ORDER BY ts_rank(search_tsv, query, 1) DESC;
+
+-- ❌ Не забывайте про правильную конфигурацию языка
+-- Плохо:
+to_tsvector('Русский текст')  -- Использует конфигурацию по умолчанию
+
+-- Хорошо:
+to_tsvector('russian', 'Русский текст')
+```

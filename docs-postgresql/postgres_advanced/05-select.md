@@ -20,7 +20,6 @@ keywords: [postgresql, selecct, join, subquery, agregate_functions]
 ```sql
 -- Создание базы данных
 CREATE DATABASE university;
-\c university
 
 -- Студенты
 CREATE TABLE students (
@@ -166,6 +165,19 @@ INSERT INTO exam_results (exam_id, student_id, score) VALUES
 ```
 
 ## JOIN операции в деталях
+
+**JOIN** — это оператор, который позволяет **объединять данные из двух или более таблиц** в один результат на основе какого-то условия (обычно по общим ключам / полям).
+
+Без JOIN вы можете выбрать данные только из одной таблицы. С JOIN — получаете информацию сразу из нескольких связанных таблиц.
+
+### Зачем нужны JOIN-ы? 
+
+- Показать имя клиента + название заказа + дату (таблицы `clients` и `orders`)
+- Вывести сотрудников и их отделы (таблицы `employees` и `departments`)
+- Получить все товары в заказе с их ценами и категориями
+- Сравнить данные за разные периоды (self-join)
+- Собрать отчёт по продажам с информацией о товарах, клиентах и менеджерах одновременно
+
 
 ### INNER JOIN — Внутреннее объединение
 
@@ -438,6 +450,40 @@ LIMIT 10;
 
 
 ## Подзапросы (Subqueries)
+
+**Подзапросы** — это **запрос внутри другого запроса**. По сути, это `SELECT`, который вложен в другой `SELECT` (или `INSERT/UPDATE/DELETE`), и его результат используется как часть внешнего (основного) запроса.
+
+Подзапросы часто называют **вложенными запросами** или **внутренними запросами**.
+
+### Зачем нужны подзапросы? (когда их используют вместо JOIN или вместе с ними)
+
+- Получить одно значение (например, среднюю цену, максимальную дату) и сравнить с ней
+- Найти записи, которые больше/меньше/равны какому-то вычисленному значению
+- Проверить существование связанных записей (`EXISTS` / `NOT EXISTS`)
+- Получить список id/значений и отфильтровать по нему (`IN` / `NOT IN` / `ANY` / `ALL`)
+- Разбить сложную логику на шаги (особенно когда `JOIN` получается слишком громоздким)
+- Вычислить что-то для каждой строки отдельно (коррелированный подзапрос)
+
+### Основные места, куда можно вставить подзапрос
+
+| Место              | Тип подзапроса              | Что обычно возвращает          | Пример оператора          |
+|---------------------|------------------------------|----------------------------------|----------------------------|
+| WHERE              | Скалярный / список / EXISTS | одно значение / список / true   | =, >, IN, EXISTS, ANY/ALL |
+| SELECT             | Скалярный                   | одно значение на строку         | в столбце выборки         |
+| FROM               | Таблица (derived table)     | набор строк и столбцов          | как виртуальная таблица   |
+| HAVING             | Скалярный / список          | для фильтрации после GROUP BY   | аналогично WHERE          |
+
+
+### Короткое сравнение: JOIN vs Подзапрос
+
+| Задача                              | Обычно лучше               | Почему |
+|-------------------------------------|----------------------------|--------|
+| Связать две таблицы и взять поля    | JOIN                       | быстрее, понятнее |
+| Проверить существование             | EXISTS                     | часто быстрее IN |
+| Сравнить с агрегатом (ср. цена и т.д.) | Подзапрос или CTE       | удобно |
+| Сложная фильтрация по подмножеству | Подзапрос / CTE / LATERAL  | гибкость |
+| Очень большие данные                | JOIN или LATERAL           | оптимизатор лучше справляется |
+
 
 ### Скалярные подзапросы
 
@@ -801,7 +847,182 @@ HAVING COUNT(e.student_id) > (
 );
 ```
 
+## Функции
+
+**Функции** — это один из самых мощных инструментов для расширения возможностей базы данных. Они позволяют писать **переиспользуемый код**, который можно вызывать в запросах, триггерах, политиках безопасности и т.д.
+
+PostgreSQL различает **встроенные функции** (их сотни: `now()`, `sum()`, `jsonb_build_object()`, `string_agg()` и т.д.) и **пользовательские функции** (user-defined functions, UDF), которые ты создаёшь сам с помощью `CREATE FUNCTION`.
+
+### Основные виды пользовательских функций (по типу возвращаемого значения)
+
+| Вид функции                  | Что возвращает                          | Ключевое слово в RETURNS          | Когда использовать (примеры)                              | Пример вызова                          |
+|------------------------------|-----------------------------------------|------------------------------------|------------------------------------------------------------|----------------------------------------|
+| **Скалярная** (обычная)      | Одно значение (число, строка, дата…)   | RETURNS тип                        | Вычисления, форматирование, проверки                       | `SELECT calc_discount(price, 0.15);`   |
+| **SET OF / TABLE**           | Набор строк (таблицу)                   | RETURNS SETOF тип \| RETURNS TABLE | Возвращать несколько строк, как подзапрос или view        | `SELECT * FROM get_active_users();`    |
+| **Таблица с колонками**      | Таблицу с именованными столбцами        | RETURNS TABLE (col1 тип, col2 тип) | Возвращать структурированный результат (как CTE)          | `SELECT * FROM get_orders_summary();`  |
+| **Триггерная**               | TRIGGER                                 | RETURNS TRIGGER                    | Автоматика: BEFORE/AFTER INSERT/UPDATE/DELETE              | Автоматически в триггере               |
+| **Агрегатная**               | Одно значение по группе строк           | RETURNS тип + CREATE AGGREGATE     | Собственный агрегат (медиана, mode, json_merge и т.д.)    | `SELECT my_median(salary) FROM emp;`   |
+| **Оконная** (window)         | Значение для каждой строки с окном      | RETURNS тип + window function      | Ранжирование, running total, lag/lead с кастомной логикой | В `OVER (...)`                         |
+
+### Примеры 
+
+1. Простая скалярная функция (sql)
+
+```sql
+CREATE OR REPLACE FUNCTION discount_price(p numeric, percent numeric)
+RETURNS numeric AS $$
+    SELECT p * (1 - percent / 100);
+$$ LANGUAGE sql IMMUTABLE;
+```
+
+2. Функция, возвращающая таблицу (plpgsql)
+
+```sql
+CREATE OR REPLACE FUNCTION get_recent_orders(days int DEFAULT 30)
+RETURNS TABLE (
+    order_id int,
+    customer_name text,
+    total numeric
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT o.id, u.name, SUM(oi.qty * p.price)
+    FROM orders o
+    JOIN users u ON o.user_id = u.id
+    JOIN order_items oi ON oi.order_id = o.id
+    JOIN products p ON oi.product_id = p.id
+    WHERE o.created_at >= current_date - days * interval '1 day'
+    GROUP BY o.id, u.name;
+END;
+$$ LANGUAGE plpgsql STABLE;
+```
+
+3. Триггерная функция (обновление updated_at)
+
+```sql
+CREATE OR REPLACE FUNCTION update_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trig_update_ts
+BEFORE UPDATE ON orders
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+```
+
+## Триггеры
+
+**Триггеры** — это специальные механизмы (по сути, автоматические "хуки"), которые **запускают заданную функцию** при наступлении определённых событий в таблице или представлении.
+
+Они позволяют автоматически выполнять действия в ответ на операции:
+
+- INSERT  
+- UPDATE  
+- DELETE  
+- (реже) TRUNCATE
+
+Триггеры особенно полезны, когда нужно обеспечить **целостность данных**, **аудит**, **автоматическое обновление** или **бизнес-логику** строго на уровне базы данных, а не только в приложении.
+
+### Основные типы по времени срабатывания
+
+| Тип          | Когда срабатывает                              | Что можно делать в функции                          | Самые частые применения                          |
+|--------------|------------------------------------------------|-----------------------------------------------------|--------------------------------------------------|
+| **BEFORE**   | До выполнения операции (до проверки constraint) | Изменять NEW (вставляемые/обновляемые значения), возвращать NULL — отменить операцию для строки | Валидация, автозаполнение (updated_at), нормализация данных |
+| **AFTER**    | После успешного выполнения операции            | Читать OLD/NEW, но нельзя менять строку; можно вставить/обновить другие таблицы | Аудит (логи изменений), обновление счётчиков, уведомления |
+| **INSTEAD OF** | Вместо операции (только на views)             | Полностью заменяет INSERT/UPDATE/DELETE на view     | Updatable views, сложные представления           |
+
+### Уровень выполнения
+
+- **FOR EACH ROW** — срабатывает для каждой изменённой строки (самый распространённый)
+- **FOR EACH STATEMENT** — срабатывает один раз на весь запрос (удобно для больших операций, transition tables в PostgreSQL 10+)
+
+### Простой пример
+
+```sql
+-- 1. Функция триггера (PL/pgSQL)
+CREATE OR REPLACE FUNCTION update_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;  -- обязательно для BEFORE!
+END;
+$$ LANGUAGE plpgsql;
+
+-- 2. Сам триггер
+CREATE TRIGGER trig_update_timestamp
+BEFORE UPDATE ON users                  -- или orders, products и т.д.
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp();
+```
+
+Теперь любое UPDATE на таблице users автоматически обновит поле updated_at.
+
+### Ещё 3 популярных примера
+
+1. **Аудит изменений** (AFTER UPDATE/INSERT/DELETE)
+
+```sql
+CREATE TRIGGER audit_log
+AFTER INSERT OR UPDATE OR DELETE ON orders
+FOR EACH ROW EXECUTE FUNCTION log_order_changes();
+```
+
+Функция вставляет запись в таблицу audit с OLD/NEW значениями, кто изменил и когда.
+
+2. **Запрет удаления** (BEFORE DELETE)
+
+```sql
+CREATE TRIGGER prevent_delete_paid
+BEFORE DELETE ON orders
+FOR EACH ROW
+WHEN (OLD.status = 'paid')
+EXECUTE FUNCTION raise_paid_order_delete_error();
+```
+
+Функция делает RAISE EXCEPTION, если пытаются удалить оплаченный заказ.
+
+3. **Синхронизация счётчика** (AFTER INSERT/DELETE)
+
+```sql
+CREATE TRIGGER update_user_order_count
+AFTER INSERT OR DELETE ON orders
+FOR EACH ROW EXECUTE FUNCTION recalc_user_orders();
+```
+
+Функция обновляет поле orders_count в таблице users.
+
 ## Агрегатные функции
+
+**Агрегатные функции** (aggregate functions) — это специальные функции, которые **берут набор строк** (много значений) и **возвращают одно единственное значение** — итог, сводку, статистику.
+
+Они отвечают на вопросы типа:
+- Сколько всего заказов?
+- Какая средняя цена товара?
+- Самый дорогой заказ?
+- Общая сумма продаж за месяц?
+
+Без агрегатных функций ты можешь получить только отдельные строки. С ними — **сводные показатели**.
+
+### Полезные правила и ловушки
+
+- Агрегаты **нельзя** использовать в `WHERE` → используй `HAVING` для фильтрации после группировки
+
+```sql
+-- правильно
+SELECT user_id, SUM(amount) AS total
+FROM orders
+GROUP BY user_id
+HAVING SUM(amount) > 10000;
+```
+
+- `COUNT(*)` считает все строки, `COUNT(column)` — только не-NULL
+- Если группа пустая → большинство агрегатов вернут `NULL` (кроме `COUNT(*) → 0`)
+- Можно комбинировать несколько агрегатов в одном запросе
+- `DISTINCT` внутри: `COUNT(DISTINCT user_id)`
+
 
 ### Основные агрегатные функции
 
@@ -1258,94 +1479,4 @@ UNION ALL
 UNION ALL
 (SELECT 'Active Enrollments', COUNT(*)
  FROM enrollments WHERE status = 'active');
-```
-
-### Common Table Expressions (CTE)
-
-CTE делают сложные запросы более читаемыми.
-
-```sql
--- Простой CTE
-WITH high_performers AS (
-    SELECT 
-        student_id,
-        first_name,
-        last_name,
-        gpa
-    FROM students
-    WHERE gpa >= 3.7
-)
-SELECT 
-    hp.first_name || ' ' || hp.last_name AS student,
-    hp.gpa,
-    c.course_name,
-    e.grade
-FROM high_performers hp
-JOIN enrollments e ON hp.student_id = e.student_id
-JOIN courses c ON e.course_id = c.course_id
-WHERE e.status = 'completed'
-ORDER BY hp.gpa DESC, c.course_name;
-
--- Множественные CTE
-WITH 
-course_stats AS (
-    SELECT 
-        course_id,
-        COUNT(DISTINCT student_id) AS enrolled_count,
-        COUNT(*) FILTER (WHERE grade IN ('A', 'B')) AS ab_count
-    FROM enrollments
-    WHERE status = 'completed'
-    GROUP BY course_id
-),
-exam_stats AS (
-    SELECT 
-        ex.course_id,
-        AVG(er.score / ex.max_score * 100) AS avg_percentage
-    FROM exams ex
-    JOIN exam_results er ON ex.exam_id = er.exam_id
-    GROUP BY ex.course_id
-)
-SELECT 
-    c.course_name,
-    cs.enrolled_count,
-    cs.ab_count,
-    ROUND(cs.ab_count::NUMERIC / NULLIF(cs.enrolled_count, 0) * 100, 2) AS ab_rate,
-    ROUND(es.avg_percentage, 2) AS avg_exam_score
-FROM courses c
-LEFT JOIN course_stats cs ON c.course_id = cs.course_id
-LEFT JOIN exam_stats es ON c.course_id = es.course_id
-WHERE cs.enrolled_count IS NOT NULL
-ORDER BY ab_rate DESC NULLS LAST;
-
--- Рекурсивный CTE (для иерархических данных)
-WITH RECURSIVE student_mentors AS (
-    -- Базовый случай: студенты без менторов
-    SELECT 
-        student_id,
-        first_name || ' ' || last_name AS name,
-        mentor_id,
-        1 AS level,
-        ARRAY[student_id] AS path
-    FROM students
-    WHERE mentor_id IS NULL
-    
-    UNION ALL
-    
-    -- Рекурсивный случай: студенты с менторами
-    SELECT 
-        s.student_id,
-        s.first_name || ' ' || s.last_name,
-        s.mentor_id,
-        sm.level + 1,
-        sm.path || s.student_id
-    FROM students s
-    JOIN student_mentors sm ON s.mentor_id = sm.student_id
-    WHERE NOT s.student_id = ANY(sm.path)  -- Избежать циклов
-)
-SELECT 
-    REPEAT('  ', level - 1) || name AS hierarchy,
-    level,
-    mentor_id
-FROM student_mentors
-ORDER BY path;
 ```
