@@ -1,5 +1,5 @@
 ---
-sidebar_position: 5
+sidebar_position: 2
 description: "Практика по типам данных PostgreSQL: числовые, строковые, временные, boolean, uuid, jsonb, массивы"
 ---
 
