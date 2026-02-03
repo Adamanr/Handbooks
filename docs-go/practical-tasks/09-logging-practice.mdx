@@ -1,0 +1,229 @@
+---
+sidebar_position: 9
+description: "Практика по логгированию в Go: log, slog, zerolog, zap, уровни, контекст, структурированные логи"
+---
+
+import { RandomVariantButton, TaskWithVariants, CodeBlockGo } from "../../src/components/practicModules/practic";
+
+# Практика: Логгирование в Go
+
+<CodeBlockGo />
+
+## Задание 1 — Базовый логгер с настройками
+
+<TaskWithVariants
+  taskId="log-1-basic"
+  title="Задание 1: Настраиваемый логгер с флагами"
+  difficulty={["Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий"]}
+  estimatedTime="10-15 минут"
+  description="Настрой базовый `log` с префиксом, флагами (дата, время, файл). Запиши несколько сообщений и покажи разницу с/без флагов."
+  variants={[
+    "Префикс: [APP] , флаги: Ldate | Ltime",
+    "Префикс: [DEBUG] , флаги: Lshortfile",
+    "Префикс: [INFO] , флаги: Ldate | Ltime | Lmicroseconds",
+    "Префикс: [WARN] , флаги: Llongfile",
+    "Префикс: [ERROR] , флаги: LUTC | Ldate | Ltime",
+    "Префикс: [SERVER] , флаги: Lmsgprefix",
+    "Префикс: [CLI] , флаги: Ldate | Lshortfile",
+    "Префикс: [DB] , флаги: Ltime | Lmicroseconds",
+    "Префикс: [API] , флаги: Ldate | Llongfile",
+    "Префикс: [TEST] , флаги: LstdFlags",
+    "Префикс: [BOT] , флаги: 0 (без флагов)",
+    "Префикс: [GAME] , флаги: Ldate | Ltime | Lshortfile",
+  ]}
+>
+  **Требования:**
+  - используй `log.SetPrefix`, `log.SetFlags`
+  - запиши 3–5 сообщений: Println, Printf
+  - покажи вывод с флагами и без (сравни)
+
+  Пример вывода:
+  ```
+  [APP] 2026/01/07 14:35:22 Сервер запущен
+  [APP] 2026/01/07 14:35:23 Ошибка: connection refused
+  ```
+</TaskWithVariants>
+
+## Задание 2 — Кастомный логгер в файл + stdout
+
+<TaskWithVariants
+  taskId="log-2-custom"
+  title="Задание 2: Логгер в файл и консоль"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="15-20 минут"
+  description="Создай кастомный *log.Logger, который пишет и в файл (app.log), и в stdout. Добавь Fatal для критической ошибки."
+  variants={[
+    "События: App started, User login, Critical error",
+    "События: DB connected, Query executed, Fatal crash",
+    "События: Server ready, Request received, Error 500",
+    "События: Init config, Load data, Panic out of memory",
+    "События: User registered, Email sent, DB error",
+    "События: Cache warmed, Hit cache, Miss cache",
+    "События: Bot online, Message received, Response sent",
+    "События: Game started, Player joined, Game over",
+    "События: API called, Response OK, Timeout",
+    "События: Test begun, Assertion failed, Test passed",
+    "События: CLI command, Arg parsed, Execution done",
+    "События: Module loaded, Function called, Return value",
+  ]}
+>
+  **Требования:**
+  - используй `io.MultiWriter(os.Stdout, file)`
+  - `log.New(multi, "[APP] ", log.LstdFlags)`
+  - добавь `log.Fatal` для критической ошибки
+  - проверь файл после выполнения
+
+  Пример вывода (и в консоли, и в файле):
+  ```
+  [APP] 2026/01/07 14:35:22 App started
+  [APP] 2026/01/07 14:35:23 User login: alice
+  [APP] 2026/01/07 14:35:24 Critical error: boom
+  ```
+</TaskWithVariants>
+
+## Задание 3 — slog: структурированный логгер по уровням
+
+<TaskWithVariants
+  taskId="slog-3-levels"
+  title="Задание 3: Логгер с уровнями и атрибутами"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="15-20 минут"
+  description="Настрой slog с уровнем по ENV (dev: Debug, prod: Info). Запиши сообщения разных уровней с атрибутами."
+  variants={[
+    "Уровни: Debug (detail:42), Info (user:alice), Warn (ip:1.1.1.1), Error (err:boom)",
+    "Уровни: Info (db:postgres), Warn (query:slow), Error (conn:refused)",
+    "Уровни: Debug (request_id:abc), Info (method:GET), Warn (status:429)",
+    "Уровни: Debug (config:loaded), Info (cache:warmed), Error (out_of_memory)",
+    "Уровни: Info (email:sent), Warn (spam:detected), Error (send:failed)",
+    "Уровни: Debug (hit:cache), Info (miss:cache), Warn (eviction:old)",
+    "Уровни: Info (bot:online), Warn (msg:too_long), Error (parse:invalid)",
+    "Уровни: Debug (game:started), Info (player:joined), Error (crash:bug)",
+    "Уровни: Info (api:called), Warn (timeout:5s), Error (resp:500)",
+    "Уровни: Debug (test:setup), Info (assert:passed), Error (assert:failed)",
+    "Уровни: Info (cmd:exec), Warn (arg:invalid), Error (exit:1)",
+    "Уровни: Debug (module:loaded), Info (func:called), Error (return:err)",
+  ]}
+>
+  **Требования:**
+  - `opts := &slog.HandlerOptions{Level: slog.LevelDebug if dev else Info}`
+  - `logger := slog.New(slog.NewTextHandler(os.Stdout, opts))`
+  - `slog.SetDefault(logger)`
+  - запиши 4 сообщения: Debug, Info, Warn, Error с атрибутами
+
+  Пример вывода (TextHandler):
+  ```
+  time=... level=DEBUG msg="Деталь" detail=42
+  time=... level=INFO msg="Пользователь" user=alice
+  time=... level=WARN msg="IP" ip=1.1.1.1
+  time=... level=ERROR msg="Ошибка" err=boom
+  ```
+</TaskWithVariants>
+
+## Задание 4 — slog с контекстом и JSON
+
+<TaskWithVariants
+  taskId="slog-4-context-json"
+  title="Задание 4: Контекстный логгер в JSON"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="20-25 минут"
+  description="Настрой slog в JSON-формат. Добавь глобальный контекст (app, version). Создай подлоггер для запроса (request_id)."
+  variants={[
+    "Контекст: app=my-service, version=1.2.0; request_id=abc123",
+    "Контекст: db=postgres, host=localhost; query_id=def456",
+    "Контекст: server=prod, env=production; session_id=ghi789",
+    "Контекст: config=loaded, mode=debug; user_id=123",
+    "Контекст: email=service, provider=smtp; send_id=jkl012",
+    "Контекст: cache=redis, ttl=3600; key=abc",
+    "Контекст: bot=telegram, token=hidden; chat_id=999",
+    "Контекст: game=chess, player=white; move=e4",
+    "Контекст: api=v1, endpoint=/users; auth=bearer",
+    "Контекст: test=suite, case=1; assert=passed",
+    "Контекст: cli=tool, arg=--help; exit=0",
+    "Контекст: module=auth, func=login; token=jwt",
+  ]}
+>
+  **Требования:**
+  - `logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("app", "my-service", "version", "1.2.0")`
+  - `reqLog := logger.With("request_id", id)`
+  - запиши Info, Warn, Error через подлоггер
+
+  Пример вывода (JSON):
+  ```
+  {"time":"...","level":"INFO","msg":"Запрос","app":"my-service","version":"1.2.0","request_id":"abc123"}
+  ```
+</TaskWithVariants>
+
+## Задание 5 — Zerolog для высоконагруженного сервиса
+
+<TaskWithVariants
+  taskId="zerolog-5-highload"
+  title="Задание 5: Логгер для сервера с zerolog"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="20-25 минут"
+  description="Настрой zerolog с уровнем Info. Запиши события запроса с атрибутами (method, path, status, latency)."
+  variants={[
+    "Запрос: GET /api/users, status 200, latency 34ms",
+    "Запрос: POST /login, status 401, latency 12ms",
+    "Запрос: PUT /update, status 200, latency 56ms",
+    "Запрос: DELETE /user/123, status 204, latency 78ms",
+    "Запрос: GET /health, status 200, latency 5ms",
+    "Запрос: POST /upload, status 413, latency 123ms",
+    "Запрос: GET /stats, status 200, latency 45ms",
+    "Запрос: PATCH /config, status 200, latency 67ms",
+    "Запрос: HEAD /ping, status 200, latency 3ms",
+    "Запрос: OPTIONS /cors, status 200, latency 10ms",
+    "Запрос: GET /error, status 500, latency 89ms",
+    "Запрос: POST /data, status 201, latency 112ms",
+  ]}
+>
+  **Требования:**
+  - `log := zerolog.New(os.Stdout).With().Timestamp().Logger()`
+  - `zerolog.SetGlobalLevel(zerolog.InfoLevel)`
+  - используй `log.Info().Str("method", "GET").Str("path", "/api").Int("status", 200).Dur("latency", 34*time.Millisecond).Msg("Запрос обработан")`
+
+  Пример вывода:
+  ```
+  {"level":"info","time":1640995200,"method":"GET","path":"/api/users","status":200,"latency":34000000,"message":"Запрос обработан"}
+  ```
+</TaskWithVariants>
+
+## Задание 6 — Zap с sugared и core режимами
+
+<TaskWithVariants
+  taskId="zap-6-modes"
+  title="Задание 6: Логгер с zap (sugared vs core)"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="20-25 минут"
+  description="Настрой zap в production-конфиг. Покажи разницу между sugared (удобный) и core (быстрый) логгером на примере события."
+  variants={[
+    "Событие: User login, user=alice, age=25",
+    "Событие: DB query, query=SELECT, time=45ms",
+    "Событие: Request, method=GET, path=/api",
+    "Событие: Error, err=connection refused",
+    "Событие: Cache hit, key=user123",
+    "Событие: Bot message, chat_id=999",
+    "Событие: Game move, player=white, move=e4",
+    "Событие: API response, status=200",
+    "Событие: Test assert, expected=42, actual=42",
+    "Событие: CLI arg, flag=--debug",
+    "Событие: Module init, version=1.2",
+    "Событие: Func call, param=hello",
+  ]}
+>
+  **Требования:**
+  - `logger, _ := zap.NewProduction()`
+  - sugar: `sugar.Infow(msg, "key", value)`
+  - core: `logger.Info(msg, zap.String("key", value))`
+  - покажи вывод обоих и объясни разницу
+
+  Пример вывода (JSON):
+  ```
+  {"level":"info","ts":1640995200,"caller":"main.go:15","msg":"User login","user":"alice","age":25}
+  ```
+</TaskWithVariants>
+
+
+:::tip
+Логи — глаза и уши твоей системы.  
+Выбирай логгер по нуждам: stdlib для простоты, zerolog/zap для скорости, slog для баланса.
+:::

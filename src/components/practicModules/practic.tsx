@@ -574,11 +574,11 @@ export const TaskWithVariants = ({
   return (
     <div
       style={{
-        border: "2px solid #E5E7EB",
+        border: "2px solid var(--color-members-border)",
         borderRadius: "12px",
         padding: "2rem",
         marginBottom: "2rem",
-        background: "linear-gradient(135deg, #FAFAFA 0%, #F3F4F6 100%)",
+        background: "var(--ifm-navbar-background-color)",
         boxShadow: "0 4px 20px rgba(0, 0, 0, 0.05)",
       }}
     >
@@ -607,7 +607,7 @@ export const TaskWithVariants = ({
           <h3
             style={{
               marginTop: 0,
-              color: "#111827",
+              color: "var(--ifm-pre-color)",
               fontSize: "1.5rem",
               fontWeight: "700",
             }}
@@ -663,7 +663,13 @@ export const TaskWithVariants = ({
         )}
       </div>
 
-      <p style={{ color: "#6B7280", marginBottom: "1.5rem", fontSize: "1rem" }}>
+      <p
+        style={{
+          color: "var(--ifm-pre-color)",
+          marginBottom: "1.5rem",
+          fontSize: "1rem",
+        }}
+      >
         {description}
       </p>
 
@@ -758,7 +764,7 @@ export const TaskWithVariants = ({
             style={{
               marginTop: "1rem",
               padding: "1.5rem",
-              background: "#FFFFFF",
+              background: "var(--ifm-card-background-color)",
               borderRadius: "12px",
               border: "2px solid #3B82F6",
               boxShadow: "0 4px 12px rgba(59, 130, 246, 0.1)",
@@ -775,7 +781,7 @@ export const TaskWithVariants = ({
               <h4
                 style={{
                   margin: 0,
-                  color: "#111827",
+                  color: "var(--ifm-color-content)",
                   display: "flex",
                   alignItems: "center",
                   gap: "0.5rem",
@@ -804,8 +810,8 @@ export const TaskWithVariants = ({
                 border: "1px solid #D1D5DB",
                 borderRadius: "8px",
                 resize: "vertical",
-                background: "#F9FAFB",
-                color: "#111827",
+                background: "var(--ifm-pre-background)",
+                color: "var(--ifm-pre-color)",
               }}
             />
             <p
@@ -866,7 +872,7 @@ export const TaskWithVariants = ({
                   key={index}
                   style={{
                     padding: "1rem",
-                    background: "#FFFFFF",
+                    background: "var(--ifm-card-background-color)",
                     border:
                       selectedVariant === index
                         ? "2px solid #3B82F6"
@@ -888,14 +894,14 @@ export const TaskWithVariants = ({
                       marginBottom: "0.5rem",
                     }}
                   >
-                    <strong style={{ color: "#111827" }}>
+                    <strong style={{ color: "var(--ifm-pre-color)" }}>
                       Вариант {index + 1}
                     </strong>
                     {difficulty && difficulty[index] && (
                       <span
                         style={{
                           padding: "0.25rem 0.5rem",
-                          background: "#F3F4F6",
+                          background: "var(--ifm-pre-color)",
                           borderRadius: "4px",
                           fontSize: "0.75rem",
                           color: "#6B7280",
@@ -918,9 +924,9 @@ export const TaskWithVariants = ({
           style={{
             marginTop: "1.5rem",
             padding: "1rem",
-            background: "#FFFFFF",
+            background: "var(--ifm-pre-background)",
             borderRadius: "8px",
-            border: "1px solid #E5E7EB",
+            border: "1px solid var(--ifm-pre-background)",
           }}
         >
           <div
@@ -931,7 +937,13 @@ export const TaskWithVariants = ({
               marginBottom: "0.75rem",
             }}
           >
-            <h4 style={{ margin: 0, color: "#374151", fontSize: "1rem" }}>
+            <h4
+              style={{
+                margin: 0,
+                color: "var(--ifm-pre-color)",
+                fontSize: "1rem",
+              }}
+            >
               📊 История попыток
             </h4>
             <button
@@ -1012,90 +1024,6 @@ export const TaskWithVariants = ({
 
       <br />
       {children}
-    </div>
-  );
-};
-
-// Демонстрация использования
-export const Demo = () => {
-  const demoVariants = [
-    <div>
-      <p>
-        <strong>Задача 1:</strong> Создайте программу, которая выводит "Hello,
-        World!"
-      </p>
-      <p>Подсказка: Используйте fmt.Println()</p>
-    </div>,
-    <div>
-      <p>
-        <strong>Задача 2:</strong> Напишите функцию, которая складывает два
-        числа
-      </p>
-      <p>Подсказка: func add(a, b int) int</p>
-    </div>,
-    <div>
-      <p>
-        <strong>Задача 3:</strong> Создайте цикл for от 1 до 10
-      </p>
-      <p>Подсказка: for i := 1; i &lt;= 10; i++</p>
-    </div>,
-  ];
-
-  return (
-    <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "2rem" }}>
-      <h1
-        style={{ textAlign: "center", color: "#111827", marginBottom: "2rem" }}
-      >
-        🎓 Система заданий для курса
-      </h1>
-
-      <TaskWithVariants
-        taskId="task-1-go-basics"
-        title="Практическое задание №1: Основы Go"
-        description="Выберите случайный вариант и выполните задание. Таймер поможет отследить время выполнения. Ваш прогресс сохраняется автоматически!"
-        variants={demoVariants}
-        difficulty={["Лёгкий", "Средний", "Лёгкий"]}
-        estimatedTime="15-20 минут"
-      >
-        <CodeBlockGo children={undefined} />
-      </TaskWithVariants>
-
-      <div
-        style={{
-          padding: "1.5rem",
-          background: "linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%)",
-          borderRadius: "12px",
-          marginTop: "2rem",
-          border: "2px solid #3B82F6",
-        }}
-      >
-        <h3
-          style={{
-            margin: "0 0 1rem 0",
-            color: "#1E40AF",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-          }}
-        >
-          <AlertCircle size={24} />
-          Новые возможности модуля
-        </h3>
-        <ul style={{ margin: 0, color: "#1E3A8A", lineHeight: "1.8" }}>
-          <li>✨ Анимация при выборе варианта</li>
-          <li>⏱️ Встроенный таймер для отслеживания времени</li>
-          <li>🏆 Сохранение времени выполнения при завершении</li>
-          <li>💾 Автоматическое сохранение прогресса в localStorage</li>
-          <li>🔄 Кнопка сброса для выбора нового варианта</li>
-          <li>📋 Копирование задания в буфер обмена</li>
-          <li>👁️ Просмотр всех доступных вариантов</li>
-          <li>📊 История всех попыток с временем и датой</li>
-          <li>🎯 Индикаторы сложности заданий</li>
-          <li>✅ Отметка о завершении задания</li>
-          <li>⏱️ Указание примерного времени выполнения</li>
-          <li>🗑️ Возможность очистить весь прогресс</li>
-        </ul>
-      </div>
     </div>
   );
 };

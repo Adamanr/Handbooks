@@ -1,0 +1,257 @@
+---
+sidebar_position: 15
+description: "Практика по REST API на чистом net/http: роутинг, middleware, JSON, graceful shutdown, CORS, файлы, query-параметры"
+---
+
+import { RandomVariantButton, TaskWithVariants, CodeBlockGo } from "../../src/components/practicModules/practic";
+
+# Практика: REST API на чистом net/http
+
+<CodeBlockGo />
+
+## Задание 1 — Простой REST API: Hello + Echo
+
+<TaskWithVariants
+  taskId="http-1-hello-echo"
+  title="Задание 1: Hello World + Echo"
+  difficulty={["Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий"]}
+  estimatedTime="10-15 минут"
+  description="Создай сервер с двумя маршрутами: GET /hello → 'Привет, мир!', GET /echo/{text} → возвращает текст из пути."
+  variants={[
+    "GET /hello, GET /echo/{text}",
+    "GET /greet, GET /repeat/{word}",
+    "GET /welcome, GET /mirror/{msg}",
+    "GET /api/hello, GET /api/echo/{str}",
+    "GET /say, GET /back/{phrase}",
+    "GET /hi, GET /reflect/{text}",
+    "GET /start, GET /copy/{value}",
+    "GET /salut, GET /echo/{word}",
+    "GET /bonjour, GET /repeat/{msg}",
+    "GET /hey, GET /mirror/{input}",
+    "GET /hello-world, GET /echo/{id}",
+    "GET /api/greet, GET /api/back/{text}",
+  ]}
+>
+  **Требования:**
+  - используй `http.NewServeMux()` + паттерн-роутинг
+  - `mux.HandleFunc("GET /hello", ...)`
+  - `mux.HandleFunc("GET /echo/{text}", func(w, r) { text := r.PathValue("text"); ... })`
+  - возвращай текст + статус 200
+  - тестируй через curl
+
+  Пример запроса:
+  ```
+  curl http://localhost:8080/echo/Go_is_awesome
+  → Go_is_awesome
+  ```
+</TaskWithVariants>
+
+## Задание 2 — CRUD API для задач (ToDo List)
+
+<TaskWithVariants
+  taskId="http-2-todo-crud"
+  title="Задание 2: REST API для списка задач"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="25-35 минут"
+  description="Создай in-memory ToDo API: GET /tasks, POST /tasks, GET /tasks/ {id}, PUT /tasks/{id}, DELETE /tasks/{id}. Храни задачи в map."
+  variants={[
+    "Задачи: id, title, completed (bool)",
+    "Задачи: id, description, priority (1-5), due_date",
+    "Задачи: id, name, status (todo/in-progress/done), tags []string",
+    "Задачи: id, task, done, created_at",
+    "Задачи: id, title, completed, category",
+    "Задачи: id, summary, is_done, deadline",
+    "Задачи: id, content, finished, importance",
+    "Задачи: id, label, checked, remind_at",
+    "Задачи: id, title, done, notes",
+    "Задачи: id, description, status, assignee",
+    "Задачи: id, name, completed, created_by",
+    "Задачи: id, text, is_active, expires_at",
+  ]}
+>
+  **Требования:**
+  - структура `Task { ID int; Title string; Completed bool; ... }`
+  - глобальная `map[int]*Task` + `sync.RWMutex`
+  - POST → JSON в теле → статус 201
+  - `GET /tasks/{id}` → 200 или 404
+  - PUT → полное обновление
+  - DELETE → 204
+  - используй `r.PathValue("id")` и `json.NewDecoder(r.Body).Decode()`
+
+  Пример запроса:
+  ```
+  curl -X POST http://localhost:8080/tasks -H "Content-Type: application/json" -d '{"title":"Купить молоко","completed":false}'
+  → {"id":1,"title":"Купить молоко","completed":false}
+  ```
+</TaskWithVariants>
+
+## Задание 3 — Middleware: логирование + простой auth
+
+<TaskWithVariants
+  taskId="http-3-middleware"
+  title="Задание 3: Middleware для логирования и базовой авторизации"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="20-30 минут"
+  description="Добавь два middleware: 1) логирование (метод, путь, длительность), 2) проверка заголовка Authorization: Bearer secret. Применяй к /tasks."
+  variants={[
+    "Логи + Bearer secret-token",
+    "Логи + Bearer my-api-key-123",
+    "Логи + Bearer token=xyz789",
+    "Логи + Basic auth (упрощённо)",
+    "Логи + X-API-Key: abcdef",
+    "Логи + Authorization: Token 987654",
+    "Логи + Bearer go-is-great",
+    "Логи + Authorization: ApiKey 12345",
+    "Логи + Bearer prod-key-2026",
+    "Логи + X-Auth-Token: qwe123",
+    "Логи + Bearer secure-token-v2",
+    "Логи + Authorization: Key supersecret",
+  ]}
+>
+  **Требования:**
+  - `func loggingMiddleware(next http.Handler) http.Handler`
+  - `func authMiddleware(next http.Handler) http.Handler`
+  - цепочка: `handler := loggingMiddleware(authMiddleware(mux))`
+  - при неверном токене → 401 Unauthorized
+  - логируй через `log.Printf` или `slog`
+
+  Пример вывода:
+  ```
+  → GET /tasks
+  ← GET /tasks 12.345ms
+  Unauthorized: неверный токен
+  ```
+</TaskWithVariants>
+
+## Задание 4 — Работа с query-параметрами и пагинация
+
+<TaskWithVariants
+  taskId="http-4-query-pagination"
+  title="Задание 4: Пагинация и фильтры через query"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="25-35 минут"
+  description="Расширь ToDo API: GET /tasks?limit=10&offset=20&completed=true&search=купить"
+  variants={[
+    "limit, offset, completed (bool), search",
+    "page, per_page, done, title_contains",
+    "size, from, finished, keyword",
+    "count, skip, status, q",
+    "max, start, is_done, filter",
+    "n, after, checked, contains",
+    "take, before, active, text",
+    "rows, pos, complete, query",
+    "limit, page, done=true/false, title",
+    "per_page, offset, status=done, search",
+    "batch, cursor, completed, match",
+    "items, skip, is_active, like",
+  ]}
+>
+  **Требования:**
+  - `r.URL.Query().Get("limit")`, `strconv.Atoi(...)`
+  - фильтр по `completed` (если передан)
+  - поиск по подстроке в названии (`strings.Contains`)
+  - возвращай `{ "tasks": [...], "total": 100, "limit": 10, "offset": 20 }`
+
+  Пример запроса:
+  ```
+  curl "http://localhost:8080/tasks?limit=5&offset=10&completed=true&search=купить"
+  → {"tasks":[...],"total":23,"limit":5,"offset":10}
+  ```
+</TaskWithVariants>
+
+## Задание 5 — Загрузка и отдача файлов
+
+<TaskWithVariants
+  taskId="http-5-files"
+  title="Задание 5: Загрузка и скачивание файлов"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="35-50 минут"
+  description="Добавь POST /upload (multipart/form-data) и GET /files/{filename}. Сохраняй файлы в папку uploads."
+  variants={[
+    "POST /upload, GET /files/{name}",
+    "POST /files, GET /download/{file}",
+    "POST /attach, GET /asset/{id}",
+    "POST /media, GET /media/{name}",
+    "POST /images, GET /img/{filename}",
+    "POST /docs, GET /document/{file}",
+    "POST /avatars, GET /avatar/{user}",
+    "POST /reports, GET /report/{id}",
+    "POST /backups, GET /backup/{date}",
+    "POST /uploads, GET /upload/{name}",
+    "POST /attachments, GET /attachment/{id}",
+    "POST /resources, GET /resource/{key}",
+  ]}
+>
+  **Требования:**
+  - `r.ParseMultipartForm(10 << 20)` → 10 MB лимит
+  - `file, header, err := r.FormFile("file")`
+  - сохраняй в `./uploads/` + оригинальное имя
+  - `GET /files/{filename}` → `http.ServeFile(w, r, "./uploads/"+filename)`
+  - проверяй существование файла → 404
+
+  Пример запроса:
+  ```
+  curl -X POST http://localhost:8080/upload -F "file=@photo.jpg"
+  → Файл photo.jpg успешно загружен
+
+  curl http://localhost:8080/files/photo.jpg
+  → (скачивает файл)
+  ```
+</TaskWithVariants>
+
+## Задание 6 — Итоговое: Полноценное REST API с middleware и graceful
+
+<TaskWithVariants
+  taskId="http-6-full-api"
+  title="Задание 6: Полноценное REST API (итоговое)"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="50-90 минут"
+  description="Создай REST API для управления задачами: CRUD, пагинация, поиск, загрузка файлов к задаче, middleware (логи, auth, CORS), graceful shutdown."
+  variants={[
+    "Задачи + файлы: CRUD, search, upload, graceful",
+    "Заметки + attachments: CRUD, filter, upload, shutdown",
+    "Проекты + docs: CRUD, query, file-upload, graceful",
+    "События + media: CRUD, pagination, attach, shutdown",
+    "Товары + images: CRUD, search, upload, graceful",
+    "Заказы + receipts: CRUD, filter, file, shutdown",
+    "Пользователи + avatars: CRUD, query, upload, graceful",
+    "Блоги + photos: CRUD, search, attach, shutdown",
+    "Книги + covers: CRUD, pagination, upload, graceful",
+    "Фильмы + posters: CRUD, filter, file, shutdown",
+    "Музыка + covers: CRUD, query, upload, graceful",
+    "Рецепты + photos: CRUD, search, attach, shutdown",
+  ]}
+>
+  **Требования:**
+  - структура проекта:
+    ```
+    api/
+    ├── cmd/api/main.go
+    ├── internal/
+    │   ├── models/
+    │   ├── repository/
+    │   └── service/
+    ├── pkg/
+    │   ├── middleware/
+    │   └── utils/
+    └── uploads/
+    ```
+  - middleware: logging, simple auth (Bearer), CORS
+  - graceful shutdown: сигнал → ctx 15s → srv.Shutdown
+  - in-memory хранилище + RWMutex
+  - `POST /tasks/{id}/files` — загрузка файла к задаче
+  - `GET /files/{filename}` — скачивание
+
+  Пример запуска:
+  ```
+  curl -X POST http://localhost:8080/tasks -d '{"title":"Купить билеты"}'
+  curl -X POST http://localhost:8080/tasks/1/files -F "file=@ticket.pdf"
+  ```
+
+  Это задание — полноценное REST API на чистом net/http, готовое к продакшену.
+</TaskWithVariants>
+
+:::tip
+Чистый net/http в 2026 году — это не "старый способ". Это максимальный контроль, минимальные зависимости и отличная производительность.  
+Освой его — и любой фреймворк будет тебе понятен за день.
+:::

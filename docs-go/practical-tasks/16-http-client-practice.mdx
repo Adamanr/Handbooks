@@ -1,0 +1,241 @@
+---
+sidebar_position: 16
+description: "Практика по HTTP-клиенту в Go: net/http, типизированный клиент, retry, параллельные запросы, JSON, файлы, rate limiting"
+---
+
+import { RandomVariantButton, TaskWithVariants, CodeBlockGo } from "../../src/components/practicModules/practic";
+
+# Практика: HTTP-клиент в Go
+
+<CodeBlockGo />
+
+## Задание 1 — Простой клиент + обработка ошибок
+
+<TaskWithVariants
+  taskId="httpclient-1-basics"
+  title="Задание 1: Простой HTTP-клиент"
+  difficulty={["Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий"]}
+  estimatedTime="10-15 минут"
+  description="Напиши функцию FetchJSON(url string) (map[string]any, error). Сделай GET-запрос, верни распарсенный JSON. Обработай ошибки и статусы."
+  variants={[
+    "https://jsonplaceholder.typicode.com/posts/1",
+    "https://api.github.com/users/octocat",
+    "https://httpbin.org/get",
+    "https://api.coindesk.com/v1/bpi/currentprice.json",
+    "https://api.chucknorris.io/jokes/random",
+    "https://api.quotable.io/random",
+    "https://api.agify.io/?name=Artem",
+    "https://api.nationalize.io/?name=Maria",
+    "https://api.genderize.io/?name=Alex",
+    "https://dog.ceo/api/breeds/image/random",
+    "https://api.thecatapi.com/v1/images/search",
+    "https://api.openweathermap.org/data/2.5/weather?q=Frankfurt&appid=демо",
+  ]}
+>
+  **Требования:**
+  - `client := &http.Client{Timeout: 10 * time.Second}`
+  - `resp, err := client.Get(url)`
+  - `defer resp.Body.Close()`
+  - проверяй `resp.StatusCode == http.StatusOK`
+  - `json.NewDecoder(resp.Body).Decode(&data)`
+  - возвращай ошибки с контекстом
+  
+  Пример вывода:
+  ```
+  Заголовок: My first post
+  Тело: ...
+  ```
+</TaskWithVariants>
+
+## Задание 2 — Типизированный клиент для API
+
+<TaskWithVariants
+  taskId="httpclient-2-typed"
+  title="Задание 2: Типизированный клиент"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="20-25 минут"
+  description="Создай структуру APIClient с методом `GetPost(id int) (*Post, error)`. Добавь BaseURL, Token, User-Agent."
+  variants={[
+    "JSONPlaceholder /posts/{id}",
+    "GitHub API /users/{username}",
+    "Reqres /users/{id}",
+    "DummyJSON /products/{id}",
+    "PokeAPI /pokemon/{id}",
+    "SWAPI /people/{id}",
+    "REST Countries /name/{name}",
+    "OpenWeather /weather?q={city}",
+    "NASA APOD /planetary/apod",
+    "JokeAPI /joke/{category}",
+    "BoredAPI /activity",
+    "Dog CEO /breed/{breed}/images/random",
+  ]}
+>
+  **Требования:**
+  - `type APIClient struct { BaseURL, Token, UserAgent string; Client *http.Client }`
+  - `NewAPIClient(base, token string) *APIClient`
+  - метод `GetPost(ctx context.Context, id int) (*Post, error)`
+  - используй `http.NewRequestWithContext`
+  - заголовки: `Authorization, User-Agent, Accept: application/json`
+  
+  Пример:
+  ```
+    client := NewAPIClient("https://jsonplaceholder.typicode.com", "")
+    post, err := client.GetPost(context.Background(), 1)
+  ```
+
+</TaskWithVariants>
+
+## Задание 3 — Retry + backoff
+
+<TaskWithVariants
+  taskId="httpclient-3-retry"
+  title="Задание 3: Клиент с retry и экспоненциальным backoff"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="25-35 минут"
+  description="Добавь к клиенту retry: 3–5 попыток, backoff 1s → 2s → 4s, только для 5xx и сетевых ошибок."
+  variants={[
+    "Retry 3 раза, backoff 1s,2s,4s",
+    "Retry 5 раз, jitter 0–500ms",
+    "Retry 4 раза, max delay 10s",
+    "Retry на 429 + 5xx, exponential + jitter",
+    "Retry 3 раза + логирование попыток",
+    "Retry с кастомными статусами (502,503,504)",
+    "Retry + context timeout 30s",
+    "Retry + User-Agent rotation",
+    "Retry + circuit breaker (5 ошибок → пауза)",
+    "Retry + метрики (прометеус-style)",
+    "Retry + rate limiter (10 req/s)",
+    "Retry + proxy rotation (заглушка)",
+  ]}
+>
+  **Требования:**
+  - функция `DoWithRetry(ctx context.Context, req *http.Request, max int) (*http.Response, error)`
+  - backoff: `time.Sleep(time.Second << attempt)`
+  - retry на: `err != nil`, `resp.StatusCode >= 500`
+  - логируй каждую попытку через slog
+
+  Пример вывода:
+  ```
+  Попытка 1: 502 Bad Gateway → ждём 1s
+  Попытка 2: 200 OK
+  ```
+</TaskWithVariants>
+
+## Задание 4 — Параллельные запросы + errgroup
+
+<TaskWithVariants
+  taskId="httpclient-4-parallel"
+  title="Задание 4: Параллельные запросы к API"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="30-45 минут"
+  description="Дан слайс ID. Запусти параллельные запросы через errgroup.WithContext. Собери результаты или первую ошибку."
+  variants={[
+    "JSONPlaceholder /posts → 20 ID",
+    "GitHub /users → 10 username",
+    "PokeAPI /pokemon → 50 ID",
+    "Reqres /users → 15 ID",
+    "DummyJSON /products → 30 ID",
+    "SWAPI /people → 25 ID",
+    "REST Countries /alpha → 40 кодов",
+    "OpenWeather /weather → 10 городов",
+    "NASA APOD → 5 дат",
+    "JokeAPI → 20 категорий",
+    "BoredAPI → 30 активностей",
+    "Dog CEO → 15 пород",
+  ]}
+>
+  **Требования:**
+  - `g, ctx := errgroup.WithContext(context.Background())`
+  - `ctx, cancel := context.WithTimeout(ctx, 15*time.Second)`
+  - `g.Go(func() error { ... })`
+  - канал результатов или map
+  - обработай контекстную отмену
+
+  Пример вывода:
+  ```
+  Получено 18 постов из 20
+  Ошибка: context deadline exceeded
+  ```
+</TaskWithVariants>
+
+## Задание 5 — Загрузка файлов + multipart
+
+<TaskWithVariants
+  taskId="httpclient-5-upload"
+  title="Задание 5: Клиент с загрузкой файлов"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="35-50 минут"
+  description="Напиши метод UploadFile(url, path string) (string, error). Отправь файл через multipart/form-data."
+  variants={[
+    "POST /upload → file=@photo.jpg",
+    "POST /files → avatar=@profile.png",
+    "POST /media → document=@report.pdf",
+    "POST /images → picture=@cat.jpg",
+    "POST /attachments → resume=@cv.docx",
+    "POST /resources → data=@dataset.csv",
+    "POST /backups → archive=@backup.zip",
+    "POST /avatars → image=@user.png",
+    "POST /docs → file=@contract.pdf",
+    "POST /photos → upload=@vacation.jpg",
+    "POST /reports → submit=@sales.xlsx",
+    "POST /fileshare → share=@presentation.pptx",
+  ]}
+>
+  **Требования:**
+  - `var b bytes.Buffer; w := multipart.NewWriter(&b)`
+  - `fw, _ := w.CreateFormFile("file", filepath.Base(path))`
+  - `io.Copy(fw, file)`
+  - `req, _ := http.NewRequest("POST", url, &b)`
+  - `req.Header.Set("Content-Type", w.FormDataContentType())`
+
+  Пример вывода:
+  ```
+  Файл photo.jpg успешно загружен
+  Ответ сервера: `{"url":"https://.../photo.jpg"}`
+  ```
+</TaskWithVariants>
+
+## Задание 6 — Итоговое: Полноценный клиент для внешнего API
+
+<TaskWithVariants
+  taskId="httpclient-6-full-client"
+  title="Задание 6: Полноценный клиент для API (итоговое)"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="50-90 минут"
+  description="Создай клиент для любого публичного API (JSONPlaceholder, GitHub, PokeAPI и т.д.) с retry, rate limiting, параллельными запросами, graceful shutdown."
+  variants={[
+    "JSONPlaceholder: Posts + Comments + Users",
+    "GitHub: Users + Repos + Issues",
+    "PokeAPI: Pokemon + Abilities + Moves",
+    "Reqres: Users + Resources + Unknown",
+    "DummyJSON: Products + Carts + Quotes",
+    "SWAPI: People + Planets + Starships",
+    "REST Countries: Countries + Capitals + Currencies",
+    "OpenWeather: Current + Forecast + Air",
+    "NASA: APOD + Mars Rover + Earth",
+    "JokeAPI: Jokes + Categories + Flags",
+    "BoredAPI: Activities + Filters + Types",
+    "Dog CEO: Breeds + Images + Random",
+  ]}
+>
+  **Требования:**
+  - структура `type APIClient struct { ... }`
+  - методы: `GetPost`, `ListUsers`, `Search`, `BatchGet`
+  - retry 3–5 раз + exponential backoff
+  - rate limiting: 10 req/s (time.Ticker или golang.org/x/time/rate)
+  - параллельные запросы + errgroup
+  - graceful shutdown (ctx отменяется при Ctrl+C)
+
+  Пример запуска:
+  ```
+  client := NewAPIClient("https://jsonplaceholder.typicode.com")
+  posts, err := client.BatchGetPosts(context.Background(), []int{1,2,3,4,5})
+  ```
+
+  Это задание — полноценный production-ready HTTP-клиент, готовый к использованию в реальных проектах.
+</TaskWithVariants>
+
+:::tip
+Хороший HTTP-клиент в 2026 году — это не просто `http.Get`. Это retry, rate limiting, типизация, параллелизм, graceful shutdown и понятные ошибки.  
+Освой чистый `net/http` — и любой клиентский фреймворк будет тебе понятен за час.
+:::

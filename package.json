@@ -20,19 +20,23 @@
     "@docusaurus/preset-classic": "^3.9.2",
     "@giscus/react": "^3.1.0",
     "@gracefullight/docusaurus-plugin-yandex-metrica": "^1.0.1",
-    "@mdx-js/react": "^3.0.0",
-    "clsx": "^2.0.0",
+    "@mdx-js/react": "^3.1.1",
+    "clsx": "^2.1.1",
+    "hast-util-select": "^6.0.4",
+    "install": "^0.13.0",
     "koda": "^0.0.3",
     "lucide-react": "^0.562.0",
     "prism-react-renderer": "^2.4.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "remark-directive": "^4.0.0",
+    "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.9.2",
     "@docusaurus/tsconfig": "3.9.2",
     "@docusaurus/types": "3.9.2",
-    "typescript": "~5.6.2",
+    "typescript": "~5.6.3",
     "webpack-bundle-analyzer": "^5.2.0"
   },
   "browserslist": {

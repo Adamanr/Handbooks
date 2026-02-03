@@ -1,0 +1,227 @@
+---
+sidebar_position: 13
+description: "Практика по пакетам, модулям и организации проекта в Go: go.mod, internal, init(), многослойная структура, экспорт"
+---
+
+import { RandomVariantButton, TaskWithVariants, CodeBlockGo } from "../../src/components/practicModules/practic";
+
+# Практика: Пакеты, модули и организация проекта
+
+<CodeBlockGo />
+
+## Задание 1 — Создание первого модуля и пакета
+
+<TaskWithVariants
+  taskId="modules-1-first-module"
+  title="Задание 1: Первый модуль + утилитарный пакет"
+  difficulty={["Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий"]}
+  estimatedTime="10-15 минут"
+  description="Создай модуль `github.com/ваш-ник/cli-tool`. В пакете `pkg/utils` напиши 3–4 полезные функции (например, ToUpper, Reverse, Sum). В cmd/cli/main.go используй их."
+  variants={[
+    "Утилиты: ToUpper, ReverseString, SumInts",
+    "Утилиты: FormatDate, Truncate, ContainsAny",
+    "Утилиты: HumanSize, ParseDuration, SafeAtoi",
+    "Утилиты: HashString, GenerateID, Pluralize",
+    "Утилиты: LeftPad, RightPad, Center",
+    "Утилиты: IsEmail, IsURL, IsUUID",
+    "Утилиты: MinInt, MaxInt, Clamp",
+    "Утилиты: SliceContains, UniqueStrings, SortInts",
+    "Утилиты: ToJSON, FromJSON, PrettyJSON",
+    "Утилиты: Retry, Timeout, WithRetry",
+    "Утилиты: Colorize, ProgressBar, Spinner",
+    "Утилиты: ReadEnv, LoadDotEnv, GetEnvOr",
+  ]}
+>
+  **Требования:**
+  - `go mod init github.com/ваш-ник/cli-tool`
+  - структура: `cmd/cli/main.go`, `pkg/utils/utils.go`
+  - функции в `utils` — экспортированные (заглавная буква)
+  - в main: вызов 2–3 функций + вывод результата
+
+  Пример вывода:
+  ```
+  Hello → HELLO
+  world → dlrow
+  Сумма: 42
+  ```
+</TaskWithVariants>
+
+## Задание 2 — Многослойная структура: config + models
+
+<TaskWithVariants
+  taskId="modules-2-layers"
+  title="Задание 2: Многослойная структура проекта"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="20-25 минут"
+  description="Создай модуль `github.com/ваш-ник/data-tool`. Организуй слои: internal/config, internal/models, pkg/utils. Загрузи конфиг из .env или JSON."
+  variants={[
+    "Конфиг: Database DSN, LogLevel, MaxWorkers",
+    "Конфиг: APIKey, Timeout, RetryCount",
+    "Конфиг: InputFile, OutputDir, Format",
+    "Конфиг: CacheSize, TTL, Host",
+    "Конфиг: Workers, QueueSize, BatchSize",
+    "Конфиг: EncryptionKey, Salt, Rounds",
+    "Конфиг: SourceDir, BackupDir, Compression",
+    "Конфиг: Port, Host, ReadTimeout",
+    "Конфиг: EmailFrom, SMTPHost, SMTPPort",
+    "Конфиг: LogFile, MaxSizeMB, RotateDays",
+    "Конфиг: TokenTTL, SecretKey, Issuer",
+    "Конфиг: MaxFileSizeMB, AllowedTypes, UploadDir",
+  ]}
+>
+  **Требования:**
+  - структура:
+    ```
+    data-tool/
+    ├── go.mod
+    ├── internal/
+    │   ├── config/
+    │   │   └── config.go
+    │   └── models/
+    │       └── config.go
+    ├── pkg/
+    │   └── utils/
+    │       └── utils.go
+    ├── cmd/
+    │   └── main/
+    │       └── main.go
+    └── .env.example
+    ```
+  - `internal/config.Load()` → читает .env или JSON
+  - `internal/models.Config` — структура с полями
+  - `pkg/utils` — 2–3 вспомогательные функции
+  - в main: загрузка конфига + вывод значений
+
+  Пример вывода:
+  ```
+  Загружен конфиг:
+  Database: postgres://user:pass@localhost:5432/db
+  LogLevel: debug
+  MaxWorkers: 10
+  ```
+</TaskWithVariants>
+
+## Задание 3 — Приватный пакет internal/database
+
+<TaskWithVariants
+  taskId="modules-3-internal-db"
+  title="Задание 3: Приватный пакет internal/database"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="20-25 минут"
+  description="В internal/database создай подключение к БД (имитация или in-memory map). Сделай его приватным (sync.Once). Экспортируй только GetDB()."
+  variants={[
+    "БД: in-memory map[string]string",
+    "БД: in-memory счётчик посещений",
+    "БД: in-memory кэш (ключ → значение)",
+    "БД: in-memory список задач",
+    "БД: in-memory статистика запросов",
+    "БД: in-memory пользовательские настройки",
+    "БД: in-memory очередь сообщений",
+    "БД: in-memory история действий",
+    "БД: in-memory топ-10 слов",
+    "БД: in-memory метрики производительности",
+    "БД: in-memory blacklist IP",
+    "БД: in-memory rate limiter",
+  ]}
+>
+  **Требования:**
+  - `internal/database/db.go` → `var db *SomeDB; once sync.Once`
+  - `func Connect() error` — инициализация
+  - `func GetDB() *SomeDB` — экспортируется
+  - в main: вызов Connect() → GetDB() → использование
+
+  Пример вывода:
+  ```
+  Подключение к БД...
+  БД готова. Ключ "user" → "Artem"
+  ```
+</TaskWithVariants>
+
+## Задание 4 — Пакет pkg/logger с init()
+
+<TaskWithVariants
+  taskId="modules-4-logger-init"
+  title="Задание 4: Пакет pkg/logger с init()"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="15-20 минут"
+  description="Создай публичный пакет pkg/logger. В init() настрой slog с уровнем из ENV. Экспортируй функции Info, Warn, Error."
+  variants={[
+    "Уровень по умолчанию: Info",
+    "Уровень из ENV: DEBUG / INFO / WARN / ERROR",
+    "Вывод в файл + stdout",
+    "JSON-формат + атрибуты",
+    "Цветной вывод в терминал",
+    "Префикс [APP] + короткий файл",
+    "Логирование ошибок с err",
+    "Контекстный логгер (With)",
+    "Уровень по умолчанию + переопределение",
+    "Логгер с таймстампом Unix",
+    "Логгер с ротацией (имитация)",
+    "Логгер с уровнем по флагу --debug",
+  ]}
+>
+  **Требования:**
+  - `pkg/logger/logger.go`
+  - `func init() { ... slog.SetDefault(...) }`
+  - экспортируй `func Info(msg string, args ...any)`
+  - в main: вызов логов разных уровней
+
+  Пример вывода:
+  ```
+  2026-01-07T14:35:22Z INFO Приложение запущено app=my-tool
+  2026-01-07T14:35:23Z WARN Низкий заряд батареи percent=12
+  ```
+</TaskWithVariants>
+
+## Задание 5 — Итоговое: CLI-утилита с многослойной структурой
+
+<TaskWithVariants
+  taskId="modules-5-cli-tool"
+  title="Задание 5: Полноценная CLI-утилита (итоговое)"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="40-60 минут"
+  description="Создай модуль `github.com/ваш-ник/data-cli`. Организуй слои: cmd/data-cli/main.go, internal/config, internal/models, internal/processor, pkg/utils, pkg/logger. Утилита читает файл, обрабатывает данные и выводит статистику."
+  variants={[
+    "Чтение CSV → подсчёт строк/слов/уникальных",
+    "Чтение JSON → статистика по полям",
+    "Чтение TXT → топ-10 слов",
+    "Чтение LOG → ошибки + таймстампы",
+    "Чтение CSV → среднее/медиана по колонке",
+    "Чтение JSON → фильтр по значению",
+    "Чтение TXT → поиск + контекстные строки",
+    "Чтение LOG → группировка по IP",
+    "Чтение CSV → валидация + отчёт",
+    "Чтение JSON → агрегация (sum, count)",
+    "Чтение TXT → генерация облака слов",
+    "Чтение LOG → статистика по часам/дням",
+  ]}
+>
+  **Требования:**
+  - структура проекта как в лекции
+  - `internal/config` → загрузка из .env или флагов
+  - `pkg/logger` → slog с уровнем по флагу --debug
+  - `internal/processor` → бизнес-логика обработки файла
+  - `pkg/utils` → вспомогательные функции (чтение, парсинг)
+  - main: парсинг флагов → загрузка конфига → обработка → вывод
+
+  Пример запуска:
+  ```
+  go run ./cmd/data-cli --file data.csv --word error --debug
+  ```
+
+  Пример вывода:
+  ```
+  level=INFO msg="Запуск утилиты" version=0.1.0 debug=true
+  Файл: data.csv
+  Строк: 1500
+  Слов: 12450
+  Уникальных: 3840
+  ```
+
+  Это задание — полноценная CLI-утилита с production-ready структурой.
+</TaskWithVariants>
+
+:::tip
+Хорошая структура проекта — это когда через год ты открываешь код и сразу понимаешь, где что лежит.  
+internal/ для приватного кода, pkg/ для переиспользуемого, cmd/ для точек входа — стандарт де-факто в 2026 году.
+:::

@@ -1,0 +1,246 @@
+---
+sidebar_position: 14
+description: "Практика по работе с PostgreSQL в Go: pgx, pgxpool, CRUD, транзакции, JSONB, batch, CopyFrom, goose-миграции"
+---
+
+import { RandomVariantButton, TaskWithVariants, CodeBlockGo } from "../../src/components/practicModules/practic";
+
+# Практика: PostgreSQL + pgx
+
+<CodeBlockGo />
+
+## Задание 1 — Простое подключение и ping
+
+<TaskWithVariants
+  taskId="pgx-1-connect-ping"
+  title="Задание 1: Подключение и проверка"
+  difficulty={["Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий"]}
+  estimatedTime="10-15 минут"
+  description="Создай модуль `github.com/ваш-ник/db-cli`. Подключись к PostgreSQL через pgx.Connect и сделай Ping. Выведи статус подключения."
+  variants={[
+    "База: localhost:5432, user=postgres, db=testdb",
+    "База: localhost:5433, user=app, db=analytics",
+    "База: localhost:5432, user=readonly, db=logs",
+    "База: localhost:5434, user=admin, db=metrics",
+    "База: localhost:5432, user=dev, db=staging",
+    "База: localhost:5435, user=test, db=experiments",
+    "База: localhost:5432, user=backup, db=archive",
+    "База: localhost:5436, user=reporter, db=reports",
+    "База: localhost:5432, user=importer, db=import",
+    "База: localhost:5437, user=analyzer, db=analysis",
+    "База: localhost:5432, user=etl, db=warehouse",
+    "База: localhost:5438, user=monitor, db=monitoring",
+  ]}
+>
+  **Требования:**
+  - `go mod init github.com/ваш-ник/db-cli`
+  - функция `Connect(ctx context.Context, connStr string) (*pgx.Conn, error)`
+  - в main: `conn, err := Connect(ctx, "postgres://...")`
+  - `defer conn.Close(ctx)`
+  - `conn.Ping(ctx)` → "Подключено!" или ошибка
+
+  Пример вывода:
+  ```
+  Подключение к localhost:5432/db=testdb...
+  Успешно подключено к PostgreSQL!
+  ```
+</TaskWithVariants>
+
+## Задание 2 — Пул соединений + простая выборка
+
+<TaskWithVariants
+  taskId="pgx-2-pool-select"
+  title="Задание 2: Пул + выборка пользователей"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="20-25 минут"
+  description="Создай пул pgxpool. Напиши функцию GetUsers(pool *pgxpool.Pool) ([]User, error). Верни всех пользователей из таблицы users."
+  variants={[
+    "Таблица users: id, username, email, created_at",
+    "Таблица users: id, name, role, last_login",
+    "Таблица users: id, login, status, balance",
+    "Таблица users: id, nickname, level, score",
+    "Таблица users: id, full_name, birth_date, city",
+    "Таблица users: id, phone, verified, registered_at",
+    "Таблица users: id, avatar_url, bio, followers",
+    "Таблица users: id, email, password_hash, active",
+    "Таблица users: id, username, created_at, updated_at",
+    "Таблица users: id, display_name, rank, points",
+    "Таблица users: id, email, subscription, expires_at",
+    "Таблица users: id, login, last_activity, ip",
+  ]}
+>
+  **Требования:**
+  - структура `internal/models/user.go`: `type User struct { ID int; Username string; ... }`
+  - `pkg/db/db.go`: `var Pool *pgxpool.Pool; func InitPool(connStr string) error`
+  - функция `GetUsers(ctx context.Context) ([]*User, error)`
+  - используй `pool.Query` + `rows.Scan`
+  - обработай `pgx.ErrNoRows`
+
+  Пример вывода:
+  ```
+  Пользователи:
+  1 | alice | alice@example.com | 2025-01-01
+  2 | bob   | bob@example.com   | 2025-02-15
+  ```
+</TaskWithVariants>
+
+## Задание 3 — CRUD-операции с пользователями
+
+<TaskWithVariants
+  taskId="pgx-3-crud"
+  title="Задание 3: Полный CRUD для пользователей"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="25-35 минут"
+  description="Реализуй UserRepository с методами: Create, GetByID, Update, Delete, List. Используй транзакции для Create+Update."
+  variants={[
+    "CRUD: username, email, created_at/updated_at",
+    "CRUD: name, role, last_login",
+    "CRUD: login, status, balance",
+    "CRUD: nickname, level, score",
+    "CRUD: full_name, birth_date, city",
+    "CRUD: phone, verified, registered_at",
+    "CRUD: avatar_url, bio, followers",
+    "CRUD: email, password_hash, active",
+    "CRUD: username, created_at, updated_at",
+    "CRUD: display_name, rank, points",
+    "CRUD: email, subscription, expires_at",
+    "CRUD: login, last_activity, ip",
+  ]}
+>
+  **Требования:**
+  - `internal/repository/user.go`: `type UserRepository struct { pool *pgxpool.Pool }`
+  - методы: `Create(ctx, user *User) error`, `GetByID(ctx, id int) (*User, error)`, `Update(ctx, user *User) error`, `Delete(ctx, id int) error`, `List(ctx, limit, offset int) ([]*User, error)`
+  - Create и Update — в транзакции
+  - обработай `pgx.ErrNoRows`
+
+  Пример вывода:
+  ```
+  Создан пользователь: ID=100, username=artem
+  Получен: ID=100, username=artem, email=artem@example.com
+  Обновлено: email → new@email.com
+  Удалён пользователь ID=100
+  ```
+</TaskWithVariants>
+
+## Задание 4 — JSONB и массивы в PostgreSQL
+
+<TaskWithVariants
+  taskId="pgx-4-jsonb-array"
+  title="Задание 4: Работа с JSONB и массивами"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="25-35 минут"
+  description="Создай таблицу user_profiles (user_id, settings jsonb, tags text[]). Реализуй сохранение и чтение профиля."
+  variants={[
+    "settings: {\"theme\":\"dark\", \"notifications\":true}",
+    "settings: {\"lang\":\"ru\", \"timezone\":\"+03:00\"}",
+    "settings: {\"currency\":\"EUR\", \"units\":\"metric\"}",
+    "settings: {\"font_size\":14, \"compact_mode\":false}",
+    "settings: {\"dashboard\":[\"stats\",\"charts\",\"users\"]}",
+    "settings: {\"filters\":{\"status\":\"active\",\"role\":\"admin\"}}",
+    "settings: {\"preferences\":{\"email\":true,\"sms\":false}}",
+    "settings: {\"limits\":{\"daily\":100,\"monthly\":1000}}",
+    "settings: {\"colors\":[\"#ff0000\",\"#00ff00\",\"#0000ff\"]}",
+    "settings: {\"api_keys\":[\"key1\",\"key2\",\"key3\",\"key4\"]}",
+    "settings: {\"history\":[2025-01-01,2025-02-01,2025-03-01]}",
+    "settings: {\"metadata\":{\"source\":\"web\",\"version\":2}}",
+  ]}
+>
+  **Требования:**
+  - структура `UserProfile { UserID int; Settings map[string]any; Tags []string }`
+  - `SaveProfile(ctx, profile *UserProfile) error` → INSERT/ON CONFLICT UPDATE
+  - `GetProfile(ctx, userID int) (*UserProfile, error)`
+  - pgx автоматически сериализует map в JSONB и []string в text[]
+
+  Пример вывода:
+  ```
+  Сохранён профиль user_id=1
+  Настройки: map[theme:dark notifications:true]
+  Теги: [admin developer]
+  ```
+</TaskWithVariants>
+
+## Задание 5 — Batch и CopyFrom: массовая загрузка
+
+<TaskWithVariants
+  taskId="pgx-5-batch-copy"
+  title="Задание 5: Массовая загрузка данных"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="35-50 минут"
+  description="Сгенерируй 1000–5000 пользователей и загрузи их в таблицу двумя способами: pgx.Batch и CopyFrom. Сравни время."
+  variants={[
+    "1000 пользователей → Batch vs CopyFrom",
+    "2000 пользователей → Batch vs CopyFrom",
+    "3000 пользователей → Batch vs CopyFrom",
+    "4000 пользователей → Batch vs CopyFrom",
+    "5000 пользователей → Batch vs CopyFrom",
+    "1000 пользователей + JSONB settings",
+    "2000 пользователей + tags []string",
+    "3000 пользователей + индексы",
+    "4000 пользователей + транзакция",
+    "5000 пользователей + ошибка в середине",
+    "10000 пользователей → только CopyFrom",
+    "20000 пользователей → только CopyFrom",
+  ]}
+>
+  **Требования:**
+  - функция `GenerateUsers(n int) []User`
+  - `BatchInsert(ctx, users []User) error` → pgx.Batch
+  - `CopyInsert(ctx, users []User) (int64, error)` → pgx.CopyFrom
+  - замерь время выполнения обоих методов
+  - логируй через slog: время, количество строк
+
+  Пример вывода:
+  ```
+  Сгенерировано 5000 пользователей
+  Batch: 2.45 сек, 5000 строк
+  CopyFrom: 0.38 сек, 5000 строк
+  CopyFrom быстрее в 6.4 раза!
+  ```
+</TaskWithVariants>
+
+## Задание 6 — Итоговое: CLI-утилита для работы с БД
+
+<TaskWithVariants
+  taskId="pgx-6-cli-tool"
+  title="Задание 6: CLI-утилита для управления пользователями (итоговое)"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="50-80 минут"
+  description="Создай CLI-утилиту `db-cli` с командами: add-user, list-users, get-user, update-user, delete-user, import-users (CSV), stats. Используй многослойную структуру."
+  variants={[
+    "Команды: add-user, list, get, update, delete, import, stats",
+    "Команды: create, list-all, show, edit, remove, bulk-import, count-by-role",
+    "Команды: register, users, detail, modify, drop, load-csv, summary",
+    "Команды: new, all, find, change, remove, mass-add, top-active",
+    "Команды: signup, list-users, view, update-profile, delete, import-batch, stats",
+    "Команды: add, show-all, info, edit, del, upload-csv, report",
+    "Команды: create-user, users-list, user-get, user-update, user-delete, import-csv, analytics",
+    "Команды: register-user, list-all-users, get-user-by-id, update-user, delete-user, bulk-load, dashboard",
+    "Команды: add-user, list, detail, modify, remove, csv-import, metrics",
+    "Команды: new-user, show-users, find-user, change-user, drop-user, load-from-csv, summary-stats",
+    "Команды: create, list, get-by-id, update, delete, import-csv, count-active",
+    "Команды: signup, users, profile, edit-profile, remove, bulk-import, top-users",
+  ]}
+>
+  **Требования:**
+  - структура проекта как в лекции + cmd/db-cli/main.go
+  - флаги/аргументы через flag или cobra (по желанию)
+  - слои: internal/config, internal/models, internal/repository, pkg/logger, pkg/utils
+  - миграция через goose (create_users_table)
+  - импорт CSV через CopyFrom
+  - статистика: count, avg, top-5 и т.д.
+
+  Пример запуска:
+  ```
+  db-cli add-user --username artem --email artem@example.com
+  db-cli list-users --limit 10
+  db-cli import-users users.csv
+  db-cli stats
+  ```
+
+  Это задание — полноценная CLI-утилита для работы с PostgreSQL, готовая к использованию в реальных проектах.
+</TaskWithVariants>
+
+:::tip
+PostgreSQL + pgx — это комбо, которое используют почти все серьёзные Go-проекты в 2026 году.  
+Пул соединений, транзакции, CopyFrom и goose-миграции — must-have для любого бэкенда.
+:::
