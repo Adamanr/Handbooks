@@ -76,31 +76,106 @@ article {
     border-right-color: rgba(99, 102, 241, 0.15);
 }
 
-/* Footer improvements */
+/* src/css/custom.css или в отдельном модуле footer.module.css */
+
 .footer {
-    padding: 48px 0;
-    border-top: 1px solid rgba(99, 102, 241, 0.1);
-    margin-top: 64px;
-    background: var(--card-background);
+    --footer-bg: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    --accent: #a855f7; /* violet/purple основной акцент */
+    --accent-light: #c084fc;
+    --text-muted: rgba(203, 213, 225, 0.7);
+
+    background: var(--footer-bg);
+    color: #e2e8f0;
+    padding: 5rem 1rem 3rem;
+    border-top: 1px solid rgba(168, 85, 247, 0.12);
+    margin-top: 6rem;
+    position: relative;
+    overflow: hidden;
 }
 
-.footer__links {
-    margin-bottom: 32px;
+.footer::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+        circle at 20% 80%,
+        rgba(168, 85, 247, 0.08) 0%,
+        transparent 50%
+    );
+    pointer-events: none;
 }
 
+/* Контейнер */
+.footer .container {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 3rem 2rem;
+}
+
+/* Заголовки колонок */
 .footer__title {
+    font-size: 1.1rem;
     font-weight: 700;
-    margin-bottom: 16px;
-    color: var(--ifm-color-primary);
+    color: var(--accent-light);
+    margin-bottom: 1.25rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
 }
 
+/* Ссылки */
 .footer__link-item {
-    color: var(--ifm-color-content);
-    transition: color var(--transition-fast);
+    display: block;
+    color: var(--text-muted);
+    text-decoration: none;
+    margin-bottom: 0.75rem;
+    font-size: 0.95rem;
+    transition: all 0.22s ease;
 }
 
 .footer__link-item:hover {
-    color: var(--ifm-color-primary);
+    color: white;
+    transform: translateX(6px);
+    text-shadow: 0 0 8px rgba(168, 85, 247, 0.4);
+}
+
+/* Нижняя часть (copyright + соцсети) */
+.footer__bottom {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid rgba(168, 85, 247, 0.1);
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.footer__social {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-top: 1.2rem;
+}
+
+.footer__social a {
+    color: var(--text-muted);
+    font-size: 1.4rem;
+    transition: all 0.3s ease;
+}
+
+.footer__social a:hover {
+    color: var(--accent);
+    transform: translateY(-3px);
+}
+
+/* Адаптив */
+@media (max-width: 640px) {
+    .footer {
+        padding: 4rem 1rem 2.5rem;
+    }
+    .footer__bottom {
+        margin-top: 3rem;
+    }
 }
 
 /* Hero section */

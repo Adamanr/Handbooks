@@ -1,74 +1,216 @@
 /**
- * CSS files with the .module.css suffix will be treated as CSS modules
- * and scoped locally.
+ * Современный стиль 2025–2026
  */
 
-.heroBanner {
-    padding: 4rem 2rem;
+.hero {
+    position: relative;
+    padding: 8rem 2rem 10rem;
+    overflow: hidden;
+    background: linear-gradient(135deg, #1e3a8a 0%, #312e81 50%, #4c1d95 100%);
+    color: white;
+}
+
+.heroContainer {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4rem;
+    max-width: 1400px;
+}
+
+.heroContent {
+    flex: 1;
+    max-width: 700px;
+    z-index: 2;
+}
+
+.heroTitle {
+    font-size: clamp(3.5rem, 8vw, 6.5rem);
+    font-weight: 800;
+    letter-spacing: -0.05em;
+    line-height: 1.2em;
+    margin-bottom: 1.5rem;
+    background: linear-gradient(to right, #c084fc, #a5b4fc, #7dd3fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.heroSubtitle {
+    font-size: clamp(1.25rem, 3vw, 1.75rem);
+    opacity: 0.9;
+    max-width: 580px;
+    line-height: 1.5;
+    margin-bottom: 2.5rem;
+}
+
+.heroButtons {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.primaryButton {
+    background: linear-gradient(45deg, #7c3aed, #a855f7);
+    border: none;
+    color: white;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.primaryButton:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 20px 40px rgba(124, 58, 237, 0.35);
+}
+
+.secondaryButton {
+    border-color: rgba(255, 255, 255, 0.4);
+    color: white;
+}
+
+.secondaryButton:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: white;
+}
+
+/* Декоративные элементы */
+.heroDecoration {
+    flex: 1;
+    position: relative;
+    height: 420px;
+    display: none;
+
+    @media (min-width: 996px) {
+        display: block;
+    }
+}
+
+.gradientOrb {
+    position: absolute;
+    width: 420px;
+    height: 420px;
+    background: radial-gradient(
+        circle at 30% 70%,
+        #a855f7 0%,
+        #7c3aed 30%,
+        transparent 70%
+    );
+    filter: blur(80px);
+    opacity: 0.45;
+    border-radius: 50%;
+    top: 50%;
+    right: 0;
+    transform: translate(30%, -50%);
+}
+
+/* Features */
+.featuresSection {
+    padding: 6rem 2rem;
+    background: var(--ifm-background-color);
+}
+
+.sectionTitle {
     text-align: center;
+    font-size: 2.8rem;
+    margin-bottom: 4rem;
+    background: linear-gradient(to right, #c084fc, #60a5fa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.featureGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.featureCard {
+    background: var(--ifm-card-background-color);
+    border-radius: 1.2rem;
+    padding: 2.5rem 2rem;
+    border: 1px solid rgba(124, 58, 237, 0.12);
+    transition: all 0.35s ease;
     position: relative;
     overflow: hidden;
 }
 
-/* Tablet */
-@media screen and (max-width: 996px) {
-    .heroBanner {
-        padding: 3rem 1.5rem;
-    }
+.featureCard:hover {
+    transform: translateY(-12px);
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.18);
+    border-color: #a855f7;
 }
 
-/* Mobile */
-@media screen and (max-width: 768px) {
-    .heroBanner {
-        padding: 2rem 1rem;
-    }
+.cardIcon {
+    font-size: 3.5rem;
+    margin-bottom: 1.25rem;
+    line-height: 1;
 }
 
-/* Small mobile */
-@media screen and (max-width: 480px) {
-    .heroBanner {
-        padding: 1.5rem 1rem;
-    }
-}
-
-.buttons {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 1rem;
-    margin-top: 1.5rem;
-}
-
-@media screen and (max-width: 768px) {
-    .buttons {
-        flex-direction: column;
-        width: 100%;
-        gap: 0.75rem;
-    }
-}
-
-.heroTitle {
-    font-size: clamp(2rem, 5vw, 3.5rem);
+.featureCard h3 {
+    font-size: 1.75rem;
     margin-bottom: 1rem;
-    line-height: 1.2;
+    color: var(--ifm-heading-color);
 }
 
-.heroSubtitle {
-    font-size: clamp(1rem, 3vw, 1.5rem);
-    margin-bottom: 2rem;
-    line-height: 1.5;
-    max-width: 800px;
-    margin-left: auto;
-    margin-right: auto;
+.featureCard p {
+    opacity: 0.85;
+    margin-bottom: 1.5rem;
 }
 
-@media screen and (max-width: 768px) {
+.cardLink {
+    display: inline-block;
+    color: #a855f7;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.cardLink:hover {
+    text-decoration: underline;
+}
+
+/* Coming soon card */
+.cardComing {
+    opacity: 0.75;
+    background: linear-gradient(
+        145deg,
+        rgba(30, 58, 138, 0.08),
+        rgba(49, 46, 129, 0.08)
+    );
+}
+
+.comingSoon {
+    display: inline-block;
+    margin-top: 1rem;
+    padding: 0.5rem 1.25rem;
+    background: rgba(124, 58, 237, 0.15);
+    border-radius: 999px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #c084fc;
+}
+
+/* Адаптив */
+@media (max-width: 996px) {
+    .hero {
+        padding: 6rem 1.5rem 8rem;
+    }
     .heroTitle {
-        margin-bottom: 0.75rem;
+        font-size: clamp(2.8rem, 9vw, 4.8rem);
     }
+}
 
-    .heroSubtitle {
-        margin-bottom: 1.5rem;
-    }
+.heroImage {
+    width: 100%;
+    max-width: 480px;
+    height: auto;
+    object-fit: contain;
+    border-radius: 16px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+    transition: transform 0.4s ease;
+}
+
+.heroDecoration:hover .heroImage {
+    transform: scale(1.04);
 }

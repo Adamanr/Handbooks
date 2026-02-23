@@ -1,7 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap");
-
 :root {
-    --ifm-font-family-base: "Inter", system-ui, -apple-system, sans-serif;
+    --ifm-font-family-base: "Montserrat", system-ui, -apple-system, sans-serif;
 
     /* Enhanced Colors with gradients */
     --ifm-color-primary: #17c1ff;
@@ -73,6 +71,39 @@ html[data-theme="dark"] {
     --shadow-glow: 0 0 30px rgba(23, 193, 255, 0.4);
 }
 
+/* 1. Объявляем шрифты */
+@font-face {
+    font-family: "Maple Mono";
+    src: url("/fonts/MapleMono-Regular.ttf.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap; /* важно для уменьшения FOIT/FOUT */
+}
+
+@font-face {
+    font-family: "Maple Mono";
+    src: url("/fonts/MapleMono-Medium.ttf.woff2") format("woff2");
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Maple Mono";
+    src: url("/fonts/MapleMono-SemiBold.ttf.woff2") format("woff2");
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Maple Mono";
+    src: url("/fonts/MapleMono-Bold.ttf.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
 /* Smooth scrolling */
 html {
     scroll-behavior: smooth;
@@ -80,6 +111,7 @@ html {
 
 /* Enhanced body styling */
 body {
+    font-family: "Maple Mono", system-ui, sans-serif !important;
     background: var(--body-background);
     background-attachment: fixed;
     transition: background var(--transition-slow);
