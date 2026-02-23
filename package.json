@@ -24,8 +24,7 @@
     "clsx": "^2.1.1",
     "hast-util-select": "^6.0.4",
     "install": "^0.13.0",
-    "koda": "^0.0.3",
-    "lucide-react": "^0.562.0",
+    "lucide-react": "^0.575.0",
     "prism-react-renderer": "^2.4.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -36,7 +35,7 @@
     "@docusaurus/module-type-aliases": "3.9.2",
     "@docusaurus/tsconfig": "3.9.2",
     "@docusaurus/types": "3.9.2",
-    "typescript": "~5.6.3",
+    "typescript": "~5.9.3",
     "webpack-bundle-analyzer": "^5.2.0"
   },
   "browserslist": {

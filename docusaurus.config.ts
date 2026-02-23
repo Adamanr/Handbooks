@@ -207,7 +207,7 @@ const config: Config = {
             },
             {
               label: "Telegram канал",
-              href: "https://t.me/digital_tent",
+              href: "https://t.me/devs_inc",
             },
             {
               label: "Telegram автора",

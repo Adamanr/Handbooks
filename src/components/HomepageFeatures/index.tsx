@@ -39,7 +39,7 @@ const FeatureList: FeatureItem[] = [
         оптимизация производительности, управление транзакциями и многое другое!
       </>
     ),
-    link: "postgresql/category/postgresql-основы",
+    link: "postgresql/advanced",
   },
 ];
 

@@ -1,0 +1,258 @@
+---
+sidebar_position: 17
+description: "Практика по триггерам: BEFORE/AFTER, INSTEAD OF, FOR EACH STATEMENT, WHEN, универсальные аудит-триггеры, soft-delete, пересчёт итогов"
+---
+
+import { RandomVariantButton, TaskWithVariants, CodeBlockPostgres } from "../../src/components/practicModules/practic";
+
+# Практика: Триггеры и правила
+
+<CodeBlockPostgres />
+
+## Задание 1 — BEFORE триггеры: валидация и нормализация
+
+<TaskWithVariants
+  taskId="trig-1-before"
+  title="Задание 1: BEFORE-триггеры для защиты и нормализации данных"
+  difficulty={["Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий"]}
+  estimatedTime="15-30 минут"
+  description="Создай триггеры, которые изменяют/блокируют данные перед записью."
+  variants={[
+    "Автоматическое обновление updated_at при любом UPDATE",
+    "Приведение email к нижнему регистру и удаление пробелов",
+    "Запрет снижения цены более чем на 30% за раз",
+    "Генерация уникального order_number вида ORD-YYYYMMDD-XXXXXXX",
+    "Запрет отрицательного остатка при резервировании товара",
+    "INITCAP для имени клиента + удаление лишних пробелов",
+    "Автоматическая установка is_active = false при stock = 0",
+    "Проверка, что скидка не превышает 70%",
+    "Запрет изменения статуса заказа на 'delivered' без ship_date",
+    "Автоматическое округление цены до 2 знаков",
+    "Запрет обновления sku после создания товара",
+    "Установка default категории, если не указана"
+  ]}
+>
+
+**Требования:**
+- создай триггерную функцию + триггер BEFORE INSERT OR UPDATE
+- используй NEW и OLD
+- верни NEW (или NULL для отмены операции)
+- протестируй INSERT и UPDATE, покажи, что триггер сработал
+
+Пример:
+```sql
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.updated_at := NOW();
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_products_updated_at
+    BEFORE UPDATE ON products
+    FOR EACH ROW
+    EXECUTE FUNCTION set_updated_at();
+```
+</TaskWithVariants>
+
+## Задание 2 — AFTER триггеры: аудит, пересчёт, уведомления
+
+<TaskWithVariants
+  taskId="trig-2-after"
+  title="Задание 2: AFTER-триггеры для реакции на изменения"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="25-45 минут"
+  description="Создай триггеры, которые реагируют после изменения данных."
+  variants={[
+    "Аудит всех изменений в таблице products (вставка в audit_log)",
+    "Пересчёт total в orders после изменения order_items",
+    "Запись в price_history при изменении цены товара",
+    "Уведомление (RAISE NOTICE или pg_notify) при stock < 5",
+    "Обновление среднего рейтинга продукта после нового отзыва",
+    "Логирование массового UPDATE статуса заказов",
+    "Создание записи в bonuses при достижении суммы заказов клиента",
+    "Обновление last_order_date в customers после нового заказа",
+    "Запись в low_stock_alerts при stock < reorder_point",
+    "Пересчёт баланса клиента после добавления/возврата заказа",
+    "Логирование удаления товара (вместо физического DELETE)",
+    "Обновление категории товара в связанных таблицах"
+  ]}
+>
+
+**Требования:**
+- триггер AFTER INSERT OR UPDATE OR DELETE (или нужные события)
+- используй TG_OP, TG_LEVEL, NEW/OLD
+- протестируй массовую операцию (INSERT 10 строк, UPDATE 50 строк)
+- покажи, как триггер влияет на производительность (EXPLAIN ANALYZE)
+
+Пример:
+```sql
+CREATE OR REPLACE FUNCTION recalc_order_total()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    v_order_id INT := COALESCE(NEW.order_id, OLD.order_id);
+BEGIN
+    UPDATE orders
+    SET total = (SELECT SUM(quantity * unit_price) FROM order_items WHERE order_id = v_order_id)
+    WHERE order_id = v_order_id;
+    RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+CREATE TRIGGER trg_order_items_recalc
+    AFTER INSERT OR UPDATE OR DELETE ON order_items
+    FOR EACH ROW
+    EXECUTE FUNCTION recalc_order_total();
+```
+</TaskWithVariants>
+
+## Задание 3 — INSTEAD OF + Rules
+
+<TaskWithVariants
+  taskId="trig-3-instead-rules"
+  title="Задание 3: INSTEAD OF триггеры и Rules"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="30-50 минут"
+  description="Сделай обновляемые представления и правила."
+  variants={[
+    "Обновляемое представление order_summary (orders + customers)",
+    "Мягкое удаление через INSTEAD OF DELETE на products_live",
+    "Rule для логирования DELETE вместо физического удаления",
+    "INSTEAD OF UPDATE на view для изменения только статуса заказа",
+    "Rule DO ALSO для зеркалирования INSERT в архивную таблицу",
+    "INSTEAD OF INSERT на view с проверкой баланса клиента",
+    "Rule DO NOTHING для запрета UPDATE на архивные записи",
+    "INSTEAD OF DELETE → отмена заказа вместо удаления",
+    "Обновляемое представление active_customers (is_active = true)",
+    "Rule для перенаправления INSERT в другую таблицу по условию",
+    "INSTEAD OF UPDATE на view с пересчётом total",
+    "Rule DO ALSO для уведомления при изменении цены"
+  ]}
+>
+
+**Требования:**
+- создай view + INSTEAD OF триггер (или Rule)
+- реализуй INSERT/UPDATE/DELETE через представление
+- протестируй, что обычный UPDATE/DELETE на view не работает без триггера
+- сравни поведение Rules и триггеров (если возможно)
+
+Пример:
+```sql
+CREATE VIEW products_live AS SELECT * FROM products WHERE is_active;
+
+CREATE OR REPLACE FUNCTION soft_delete_products()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE products SET is_active = false, deleted_at = NOW()
+    WHERE product_id = OLD.product_id;
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_products_live_delete
+    INSTEAD OF DELETE ON products_live
+    FOR EACH ROW EXECUTE FUNCTION soft_delete_products();
+```
+</TaskWithVariants>
+
+## Задание 4 — Универсальный аудит-триггер + WHEN
+
+<TaskWithVariants
+  taskId="trig-4-audit-when"
+  title="Задание 4: Универсальный аудит + условные триггеры"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="45-75 минут"
+  description="Создай один триггер для всей схемы + условные срабатывания."
+  variants={[
+    "Универсальный аудит для всех таблиц (products, orders, customers)",
+    "Логирование только изменений цены и остатка",
+    "Аудит + запись только изменённых полей (changed_fields)",
+    "Уведомление (RAISE / pg_notify) только при критичных изменениях",
+    "Soft-delete + аудит для всех DELETE",
+    "Пересчёт total + аудит для order_items",
+    "Логирование массовых операций (FOR EACH STATEMENT)",
+    "Запрет изменения статуса заказа после 'delivered'",
+    "Автоматическое архивирование старых заказов",
+    "Условный триггер только при stock < 10",
+    "Аудит + пересчёт рейтинга после INSERT в reviews",
+    "Логирование только операций от определённого пользователя"
+  ]}
+>
+
+**Требования:**
+- одна универсальная функция (с TG_ARGV для PK-колонки)
+- триггер на несколько таблиц с разными PK
+- используй WHEN для фильтрации (например, WHEN NEW.price &lt;&gt; OLD.price)
+- добавь поле changed_fields (массив изменённых колонок)
+- протестируй на INSERT/UPDATE/DELETE + массовые операции
+
+Пример:
+```sql
+CREATE OR REPLACE FUNCTION generic_audit()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    v_pk TEXT := TG_ARGV[0];
+    v_id TEXT;
+    v_changed TEXT[] := '{}';
+BEGIN
+    -- Определяем ID
+    EXECUTE format('SELECT ($1).%I::TEXT', v_pk) INTO v_id USING NEW;
+    -- Логика аудита...
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_products_audit
+    AFTER INSERT OR UPDATE OR DELETE ON products
+    FOR EACH ROW EXECUTE FUNCTION generic_audit('product_id');
+```
+</TaskWithVariants>
+
+## Задание 5 — Итоговый проект: полная система аудита + soft-delete + пересчёты
+
+<TaskWithVariants
+  taskId="trig-5-final"
+  title="Задание 5: Полноценная система триггеров (итоговое)"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="90-180 минут"
+  description="Создай самодостаточную систему с триггерами."
+  variants={[
+    "Интернет-магазин: аудит + soft-delete + пересчёт total + контроль остатков",
+    "Система заказов: аудит изменений + пересчёт баланса клиента + уведомления",
+    "Склад: приход/расход товаров + аудит + low-stock алерты",
+    "CRM: аудит клиентов + пересчёт сегмента + soft-delete",
+    "Система отзывов: пересчёт рейтинга + аудит + уведомление при низком рейтинге",
+    "Финансы: аудит транзакций + контроль баланса + soft-delete",
+    "Логи приложения: ротация + аудит + алерты при ERROR",
+    "Каталог товаров: аудит цен + история + запрет резкого снижения",
+    "Задачи/тикет-система: аудит статусов + пересчёт SLA",
+    "Многотенантное приложение: аудит по tenant + изоляция",
+    "Бонусная система: начисление баллов + аудит + пересчёт уровня",
+    "Подписки: аудит продлений + soft-delete + уведомления"
+  ]}
+>
+
+**Требования:**
+- минимум 5–7 триггеров (BEFORE + AFTER + INSTEAD OF)
+- универсальный аудит-триггер + минимум 2 специализированных
+- soft-delete хотя бы на одной таблице
+- пересчёт итогов (total, rating, balance и т.д.)
+- контроль целостности (остатки, баланс, лимиты)
+- условные триггеры (WHEN) + логирование
+- тестовые сценарии: массовые INSERT/UPDATE/DELETE + проверка аудита
+- документация: COMMENT ON TRIGGER + описание логики
+
+Это задание — полноценный кейс для портфолио или собеседования на позицию DBA / Senior Backend.
+</TaskWithVariants>
+
+:::tip
+Триггеры — это контракт БД с самой собой.  
+Главные правила успеха:  
+1. BEFORE → валидация и нормализация  
+2. AFTER → аудит, пересчёт, уведомления  
+3. INSTEAD OF → обновляемые представления  
+4. WHEN → экономия производительности  
+5. Универсальные функции + TG_ARGV → меньше кода  
+6. Мониторинг: pg_stat_user_functions + EXPLAIN ANALYZE
+:::

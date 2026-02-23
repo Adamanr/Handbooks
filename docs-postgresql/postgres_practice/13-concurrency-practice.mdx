@@ -1,0 +1,225 @@
+---
+sidebar_position: 15
+description: "Практика по блокировкам, режимам, deadlocks, advisory locks, SKIP LOCKED, NOWAIT и мониторингу"
+---
+
+import { RandomVariantButton, TaskWithVariants, CodeBlockPostgres } from "../../src/components/practicModules/practic";
+
+# Практика: Блокировки и конкурентный доступ
+
+<CodeBlockPostgres />
+
+## Задание 1 — Режимы блокировок таблиц
+
+<TaskWithVariants
+  taskId="lock-1-table"
+  title="Задание 1: Эксперименты с разными режимами LOCK TABLE"
+  difficulty={["Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий"]}
+  estimatedTime="15-30 минут"
+  description="Проверь конфликты и совместимость разных режимов LOCK TABLE в двух сессиях."
+  variants={[
+    "ACCESS SHARE (обычный SELECT) vs ACCESS EXCLUSIVE (ALTER TABLE)",
+    "ROW SHARE (SELECT FOR UPDATE) vs ROW EXCLUSIVE (UPDATE)",
+    "SHARE (CREATE INDEX) vs ROW EXCLUSIVE (UPDATE)",
+    "SHARE UPDATE EXCLUSIVE (VACUUM) vs ACCESS EXCLUSIVE (DROP TABLE)",
+    "EXCLUSIVE vs SHARE ROW EXCLUSIVE",
+    "SHARE MODE vs обычный UPDATE",
+    "ACCESS EXCLUSIVE vs SELECT FOR SHARE",
+    "SHARE MODE vs INSERT",
+    "ROW EXCLUSIVE vs CREATE INDEX CONCURRENTLY",
+    "SHARE UPDATE EXCLUSIVE vs REFRESH MATERIALIZED VIEW",
+    "EXCLUSIVE vs SELECT обычный",
+    "ACCESS EXCLUSIVE vs VACUUM"
+  ]}
+>
+
+**Требования:**
+- открой две сессии psql (или два окна)
+- в сессии 1 выполни LOCK TABLE в одном из режимов
+- в сессии 2 попробуй разные операции (SELECT, UPDATE, INSERT, ALTER, VACUUM и т.д.)
+- запиши, какие операции блокируются, а какие проходят
+- объясни результат, опираясь на матрицу совместимости блокировок
+
+Пример:
+```sql
+-- Сессия 1
+BEGIN;
+LOCK TABLE accounts IN SHARE MODE;
+-- Сессия 2
+UPDATE accounts SET balance = 0 WHERE id = 1;
+-- Результат: блокируется (SHARE конфликтует с ROW EXCLUSIVE)
+```
+</TaskWithVariants>
+
+## Задание 2 — Блокировки строк + FOR UPDATE / SHARE / SKIP LOCKED
+
+<TaskWithVariants
+  taskId="lock-2-row"
+  title="Задание 2: Эксперименты с блокировками строк"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="25-45 минут"
+  description="Проверь поведение FOR UPDATE, FOR SHARE, NOWAIT, SKIP LOCKED."
+  variants={[
+    "FOR UPDATE на одной строке → что может сделать другая сессия?",
+    "FOR SHARE на одной строке → кто может обновить?",
+    "FOR NO KEY UPDATE → можно ли добавить FK?",
+    "FOR KEY SHARE → можно ли удалить строку?",
+    "FOR UPDATE NOWAIT → что произойдёт, если строка уже заблокирована?",
+    "SKIP LOCKED в очереди задач → как воркеры берут задачи?",
+    "FOR UPDATE на нескольких строках → в каком порядке блокировать?",
+    "FOR SHARE + FOR UPDATE → кто кого блокирует?",
+    "FOR UPDATE на строке + попытка DELETE в другой сессии",
+    "SKIP LOCKED + ORDER BY priority DESC LIMIT 1",
+    "FOR UPDATE + pg_sleep внутри транзакции → как долго держится блокировка?",
+    "FOR SHARE + SELECT FOR UPDATE в другой сессии"
+  ]}
+>
+
+**Требования:**
+- создай тестовую таблицу (accounts, tasks, job_queue и т.д.)
+- в двух сессиях проведи эксперименты
+- покажи, что блокируется, а что нет
+- реализуй простой worker с SKIP LOCKED для очереди задач
+- попробуй NOWAIT и обработай ошибку lock_not_available
+
+Пример worker’а:
+```sql
+-- Worker
+BEGIN;
+SELECT * FROM job_queue
+WHERE status = 'pending'
+ORDER BY priority DESC, created_at
+LIMIT 1
+FOR UPDATE SKIP LOCKED;
+-- Если вернулась строка → обработать, обновить status
+COMMIT;
+```
+</TaskWithVariants>
+
+## Задание 3 — Deadlocks: воспроизведение и предотвращение
+
+<TaskWithVariants
+  taskId="lock-3-deadlock"
+  title="Задание 3: Воспроизведение и устранение deadlocks"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="30-50 минут"
+  description="Создай классический deadlock и устрани его."
+  variants={[
+    "Перевод денег между двумя счетами (Alice → Bob и Bob → Alice)",
+    "Обновление двух связанных таблиц (orders + order_items)",
+    "Блокировка товаров и клиента в разном порядке",
+    "UPDATE двух строк в разном порядке в двух сессиях",
+    "DELETE из parent + INSERT в child (FK)",
+    "UPDATE статуса заказа + UPDATE баланса клиента",
+    "Блокировка ресурса A → B в одной сессии, B → A в другой",
+    "Обновление инвентаря + создание заказа",
+    "Блокировка двух продуктов при оформлении заказа",
+    "UPDATE рейтинга продукта + UPDATE количества отзывов",
+    "Блокировка пользователя + блокировка его сессии",
+    "UPDATE двух связанных записей в разном порядке"
+  ]}
+>
+
+**Требования:**
+- воспроизведи deadlock в двух сессиях (с pg_sleep для синхронизации)
+- запиши сообщение об ошибке из лога / клиента
+- исправь двумя способами:
+  1. упорядочивание блокировки (всегда меньший ID первым)
+  2. использование advisory lock или retry-логики
+- реализуй безопасную функцию (например, transfer_money_safe)
+
+Пример:
+```sql
+-- Плохо (deadlock возможен)
+BEGIN; UPDATE accounts SET ... WHERE id = 1; pg_sleep(2); UPDATE ... WHERE id = 2;
+BEGIN; UPDATE accounts SET ... WHERE id = 2; pg_sleep(2); UPDATE ... WHERE id = 1;
+```
+</TaskWithVariants>
+
+## Задание 4 — Advisory Locks и распределённые задачи
+
+<TaskWithVariants
+  taskId="lock-4-advisory"
+  title="Задание 4: Advisory Locks для координации"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="30-50 минут"
+  description="Реализуй сценарии с advisory locks."
+  variants={[
+    "Singleton-задача: только один процесс выполняет daily maintenance",
+    "Очередь задач: worker берёт задачу без дублирования",
+    "Rate limiting: не больше 5 операций в минуту по ключу",
+    "Блокировка пользователя: нельзя одновременно редактировать профиль",
+    "Блокировка ресурса по ID (namespace + key)",
+    "Распределённый lock для cron-таски",
+    "Ограничение одновременных операций по API-ключу",
+    "Блокировка категории товаров при массовом обновлении цен",
+    "Singleton-импорт данных из внешнего источника",
+    "Блокировка сессии пользователя при logout/login",
+    "Ограничение количества параллельных экспортов отчётов",
+    "Блокировка tenant в многотенантном приложении"
+  ]}
+>
+
+**Требования:**
+- реализуй функцию с pg_try_advisory_lock / pg_advisory_xact_lock
+- добавь обработку случая, когда блокировка не получена
+- протестируй в двух сессиях (одна получает lock, вторая — нет)
+- (бонус) реализуй retry-логику или очередь ожидания
+
+Пример:
+```sql
+IF NOT pg_try_advisory_lock(12345) THEN
+    RAISE NOTICE 'Задача уже выполняется';
+    RETURN;
+END IF;
+-- Критическая секция
+PERFORM pg_advisory_unlock(12345);
+```
+</TaskWithVariants>
+
+## Задание 5 — Мониторинг и диагностика блокировок (итоговое)
+
+<TaskWithVariants
+  taskId="lock-5-final"
+  title="Задание 5: Полный мониторинг и диагностика блокировок"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="60-120 минут"
+  description="Создай инструменты для обнаружения и анализа проблем с блокировками."
+  variants={[
+    "Магазин: долгие блокировки при оформлении заказа",
+    "CRM: блокировки при массовом обновлении клиентов",
+    "Система логов: deadlocks при параллельной записи",
+    "Очередь задач: зависание worker’ов из-за блокировок",
+    "Многотенантное приложение: блокировки по tenant_id",
+    "Система платежей: блокировки счетов при переводах",
+    "Форум: блокировки постов при добавлении комментариев",
+    "Аналитика: долгие блокировки при обновлении отчётов",
+    "Импорт данных: блокировки при массовой вставке",
+    "Админ-панель: блокировки при редактировании товаров",
+    "Рассылка: блокировки при отправке уведомлений",
+    "Сессии пользователей: блокировки при logout"
+  ]}
+>
+
+**Требования:**
+- создай 2–3 представления / функции для мониторинга:
+  - текущие блокировки + кто кого ждёт
+  - долгие ожидания (> 5–30 сек)
+  - deadlocks за последние сутки
+- реализуй функцию kill_long_blocking_queries(max_duration)
+- протестируй под нагрузкой: запусти 5–10 параллельных сессий с UPDATE/SELECT FOR UPDATE
+- воспроизведи deadlock → поймай его в логе / таблице
+- предложи 5–8 рекомендаций по устранению проблем (упорядочивание, SKIP LOCKED, advisory, короткие транзакции и т.д.)
+
+Это задание — полноценный кейс для роли DBA / Senior Backend / Performance Engineer.
+</TaskWithVariants>
+
+:::tip
+Блокировки — это не враг, а инструмент.  
+Главные правила:  
+1. Короткие транзакции — лучший друг  
+2. Одинаковый порядок доступа к ресурсам — спасает от deadlocks  
+3. SKIP LOCKED + NOWAIT — идеально для очередей и конкурентных задач  
+4. Advisory Locks — когда нужно координировать приложение  
+5. Мониторинг — pg_stat_activity + pg_locks — твои глаза в проде
+:::

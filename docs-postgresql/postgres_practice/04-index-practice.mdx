@@ -1,0 +1,213 @@
+---
+sidebar_position: 4
+description: "Практика по индексам PostgreSQL: B-tree, Hash, GiST, GIN, BRIN"
+---
+
+import { RandomVariantButton, TaskWithVariants, CodeBlockPostgres } from "../../src/components/practicModules/practic";
+
+# Практика: Индексы в PostgreSQL 
+
+<CodeBlockPostgres />
+
+## Задание 1 — B-tree основы
+
+<TaskWithVariants
+  taskId="indexes-1-btree-basic"
+  title="Задание 1: Создание и обоснование B-tree индексов"
+  difficulty={["Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий"]}
+  estimatedTime="10-20 минут"
+  description="Создай B-tree индексы (простые, составные, уникальные) и обоснуй выбор порядка колонок."
+  variants={[
+    "Таблица orders: частые фильтры по order_date и status",
+    "Таблица users: поиск по email и is_active = true",
+    "Таблица products: поиск по category_id + price диапазон",
+    "Таблица employees: сортировка по last_name, first_name + фильтр по department_id",
+    "Таблица logs: фильтр по user_id + created_at > ...",
+    "Таблица posts: поиск по author_id + published_at DESC",
+    "Таблица bookings: room_id + check_in_date диапазон",
+    "Таблица payments: payment_date + amount > 1000",
+    "Таблица comments: post_id + created_at (последние)",
+    "Таблица orders: customer_id + total_amount DESC",
+    "Таблица events: event_type + occurred_at",
+    "Таблица reviews: product_id + rating >= 4"
+  ]}
+>
+
+**Требования:**
+- минимум 2–3 индекса
+- хотя бы один **составной**
+- хотя бы один **частичный** (`WHERE`)
+- напиши `CREATE INDEX` + 1–2 примера запросов, которые должны использовать индекс
+- короткое пояснение (1–2 предложения), почему именно такой порядок колонок
+
+Пример:
+```sql
+CREATE INDEX idx_orders_date_status 
+ON orders (order_date, status)
+WHERE status != 'canceled';
+
+-- будет работать для:
+SELECT * FROM orders 
+WHERE order_date >= '2025-01-01' 
+  AND status = 'delivered'
+ORDER BY order_date;
+```
+</TaskWithVariants>
+
+## Задание 2 — Частичные индексы + выражения
+
+<TaskWithVariants
+  taskId="indexes-2-partial-expr"
+  title="Задание 2: Частичные индексы и индексы на выражения"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="20-30 минут"
+  description="Создай индексы с WHERE-условием и//или на вычисляемые выражения."
+  variants={[
+    "Активные заказы за последние 90 дней",
+    "Email без учёта регистра (LOWER(email))",
+    "Заказы со статусом paid/shipped",
+    "Товары со скидкой > 20% (price < old_price * 0.8)",
+    "Пользователи с подтверждённым телефоном (phone IS NOT NULL)",
+    "Сообщения только за текущий год (DATE(created_at) >= ...)",
+    "Продукты в категории 'electronics' и price > 100",
+    "Отзывы с рейтингом 4–5 звёзд",
+    "События типа 'error' или 'warning'",
+    "Заказы с total_amount > 5000",
+    "Публикации со статусом 'published'",
+    "Бронирования на будущие даты (check_in >= NOW())"
+  ]}
+>
+
+**Требования:**
+- хотя бы один **частичный** индекс (`WHERE`)
+- хотя бы один индекс **на выражение** (`LOWER()`, `DATE()`, `(col1 * col2)`)
+- покажи 1–2 запроса, которые используют созданный индекс
+- объясни, почему без частичного индекса было бы хуже
+
+Пример:
+```sql
+CREATE INDEX idx_users_email_lower ON users (LOWER(email))
+WHERE is_verified = true;
+
+-- ускоряет:
+SELECT * FROM users WHERE LOWER(email) = 'test@gmail.com';
+```
+</TaskWithVariants>
+
+## Задание 3 — GIN для JSONB, массивов, полнотекста
+
+<TaskWithVariants
+  taskId="indexes-3-gin"
+  title="Задание 3: GIN-индексы (массивы, JSONB, tsvector)"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="25-40 минут"
+  description="Создай GIN-индексы и напиши запросы, которые их используют."
+  variants={[
+    "Поиск товаров по тегам в массиве tags",
+    "Поиск продуктов по атрибутам JSONB (color = 'blue')",
+    "Полнотекстовый поиск по названию + описанию (tsvector)",
+    "Заказы, содержащие товар с определённым sku",
+    "Пользователи с интересами в массиве interests",
+    "Документы, где metadata->'country' = 'DE'",
+    "Посты с хэштегами в массиве hashtags",
+    "Товары, где attributes ? 'battery' (ключ существует)",
+    "Поиск по нескольким тегам (&& оператор)",
+    "Полнотекст + веса (title A, content B)",
+    "JSONB с вложенными массивами",
+    "Поиск продуктов по любому из нескольких брендов"
+  ]}
+>
+
+**Требования:**
+- `USING GIN`
+- минимум 2 разных запроса (`@>`, `&&`, `?`, `@@`, etc.)
+- покажи `EXPLAIN` (можно текстом) или объясни, почему GIN здесь лучше B-tree
+- (бонус) добавь `fastupdate = off` или `gin_pending_list_limit` и поясни
+
+Пример:
+```sql
+CREATE INDEX idx_products_tags_gin ON products USING gin(tags);
+
+SELECT * FROM products 
+WHERE tags && ARRAY['sale', 'new-year'];
+```
+</TaskWithVariants>
+
+## Задание 4 — BRIN для больших временных рядов
+
+<TaskWithVariants
+  taskId="indexes-4-brin"
+  title="Задание 4: BRIN индексы + сравнение размеров"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="20-35 минут"
+  description="Работа с BRIN на большой таблице логов / заказов / событий."
+  variants={[
+    "Логи по дате logged_at",
+    "Заказы по order_date",
+    "События по occurred_at",
+    "Платежи по payment_timestamp",
+    "Метрики по measurement_time",
+    "Трекинг по created_at",
+    "Сессии по session_start",
+    "Ошибки по error_timestamp",
+    "Продажи по sale_date",
+    "Температурные записи по recorded_at",
+    "Транзакции по tx_time",
+    "Сообщения чата по sent_at"
+  ]}
+>
+
+**Требования:**
+- создай BRIN индекс
+- создай для сравнения обычный B-tree на ту же колонку
+- выведи размеры (`pg_size_pretty(pg_relation_size(...))`)
+- напиши 2–3 запроса по диапазону дат, которые выигрывают от BRIN
+- (бонус) измени `pages_per_range` и поясни эффект
+
+Пример:
+```sql
+CREATE INDEX idx_logs_brin_time ON app_logs USING brin(logged_at);
+
+SELECT pg_size_pretty(pg_relation_size('idx_logs_brin_time'));
+```
+</TaskWithVariants>
+
+## Задание 5 — Итоговое: Оптимизация поисковой системы магазина
+
+<TaskWithVariants
+  taskId="indexes-5-final"
+  title="Задание 5: Комплексная оптимизация (итоговое)"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="50-90 минут"
+  description="Предложи набор индексов для интернет-магазина / блога / логов."
+  variants={[
+    "Интернет-магазин (orders, order_items, products, users)",
+    "Блоговая платформа (posts, comments, tags, users)",
+    "Система мониторинга (metrics, logs, alerts)",
+    "Бронирование отелей/квартир (bookings, rooms, guests)",
+    "Фриланс-платформа (projects, proposals, users)",
+    "Социальная сеть lite (posts, likes, comments)",
+    "Система тикетов поддержки (tickets, messages, users)",
+    "Интернет-банк (accounts, transactions, cards)",
+    "Игровой сервер (players, sessions, events)",
+    "Аналитика рекламы (campaigns, clicks, conversions)",
+    "Медицинская система (patients, visits, diagnoses)",
+    "Логистика / доставка (shipments, routes, drivers)"
+  ]}
+>
+
+**Требования:**
+- минимум 6–8 индексов разных типов
+- обязательно должны быть: B-tree составной, частичный, GIN, BRIN
+- хотя бы один индекс на выражение
+- для каждого индекса — 1 типичный запрос + пояснение
+- таблица сравнения (какой тип индекса для какой задачи)
+- (желательно) 1–2 примера `EXPLAIN ANALYZE` (можно описать словами)
+
+Это задание можно использовать как мини-проект / портфолио.
+</TaskWithVariants>
+
+:::tip
+Хороший набор индексов — это баланс между скоростью чтения, размером на диске и скоростью записи.  
+Самые частые ошибки: избыточные индексы, неправильный порядок в составных индексах, GIN там где хватило бы B-tree.
+:::

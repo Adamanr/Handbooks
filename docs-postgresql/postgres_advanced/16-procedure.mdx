@@ -1,0 +1,1344 @@
+---
+id: module-16-concurrency
+title: "Хранимые процедуры и функции"
+sidebar_label: "Хранимые процедуры и функции"
+sidebar_position: 16
+description: "Полное руководство по хранимым процедурам и функциям в PostgreSQL"
+keywords: [postgresql, procedure, functions]
+---
+
+
+# Хранимые процедуры и функции: PL/pgSQL основы
+
+## Введение
+
+PL/pgSQL (Procedural Language/PostgreSQL) — это мощный процедурный язык программирования, встроенный в PostgreSQL. Он позволяет писать сложную бизнес-логику прямо в базе данных, используя переменные, условия, циклы, обработку исключений и многое другое.
+
+:::tip Почему PL/pgSQL?
+Хранимые процедуры и функции на PL/pgSQL выполняются прямо в PostgreSQL — это избавляет от лишних round-trip запросов между приложением и БД, упрощает поддержку инвариантов и централизует критическую бизнес-логику.
+:::
+
+## Функции vs Процедуры
+
+В PostgreSQL существует два вида хранимых подпрограмм:
+
+| Характеристика | Функция (FUNCTION) | Процедура (PROCEDURE) |
+|---|---|---|
+| Возвращаемое значение | Обязательно | Нет |
+| Управление транзакциями | Нельзя | Можно (COMMIT/ROLLBACK) |
+| Вызов | SELECT или выражение | CALL |
+| Использование в SQL | Да | Нет |
+| Добавлено в PostgreSQL | Изначально | 11+ |
+
+## Первая функция: синтаксис и структура
+
+### Анатомия PL/pgSQL функции
+
+```sql
+CREATE [OR REPLACE] FUNCTION имя_функции(
+    параметр1 ТИП,
+    параметр2 ТИП DEFAULT значение
+)
+RETURNS ТИП_ВОЗВРАТА
+LANGUAGE plpgsql
+[VOLATILE | STABLE | IMMUTABLE]
+[STRICT]
+[SECURITY DEFINER | SECURITY INVOKER]
+AS $$
+DECLARE
+    -- объявление переменных
+BEGIN
+    -- тело функции
+    RETURN значение;
+END;
+$$;
+```
+
+### Простейший пример
+
+```sql
+-- Hello World на PL/pgSQL
+CREATE OR REPLACE FUNCTION say_hello(p_name TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN 'Hello, ' || p_name || '!';
+END;
+$$;
+
+-- Вызов
+SELECT say_hello('World');
+-- → Hello, World!
+
+SELECT say_hello('PostgreSQL');
+-- → Hello, PostgreSQL!
+```
+
+### Атрибуты функций
+
+```sql
+-- IMMUTABLE: не зависит от БД, результат детерминирован
+-- Можно кешировать, использовать в индексах
+CREATE OR REPLACE FUNCTION add_numbers(a NUMERIC, b NUMERIC)
+RETURNS NUMERIC
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+BEGIN
+    RETURN a + b;
+END;
+$$;
+
+-- STABLE: не меняет данные, может использовать снимок транзакции
+-- Хорошо для функций, читающих из БД
+CREATE OR REPLACE FUNCTION get_current_timestamp_tz()
+RETURNS TIMESTAMPTZ
+LANGUAGE plpgsql
+STABLE
+AS $$
+BEGIN
+    RETURN CURRENT_TIMESTAMP;
+END;
+$$;
+
+-- VOLATILE: может изменять данные (по умолчанию)
+CREATE OR REPLACE FUNCTION insert_log(p_message TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+VOLATILE
+AS $$
+BEGIN
+    INSERT INTO logs(message) VALUES (p_message);
+END;
+$$;
+
+-- STRICT: если любой аргумент NULL — сразу вернуть NULL
+CREATE OR REPLACE FUNCTION safe_divide(a NUMERIC, b NUMERIC)
+RETURNS NUMERIC
+LANGUAGE plpgsql
+STRICT
+AS $$
+BEGIN
+    RETURN a / b;
+END;
+$$;
+
+SELECT safe_divide(10, 2);   -- → 5
+SELECT safe_divide(10, NULL); -- → NULL (не вызывает ошибку деления)
+```
+
+## Переменные и типы данных
+
+### Объявление переменных
+
+```sql
+CREATE OR REPLACE FUNCTION demo_variables()
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    -- Скалярные типы
+    v_integer     INTEGER := 42;
+    v_bigint      BIGINT;
+    v_numeric     NUMERIC(10, 2) := 3.14;
+    v_text        TEXT := 'Hello';
+    v_boolean     BOOLEAN := TRUE;
+    v_timestamp   TIMESTAMP := CURRENT_TIMESTAMP;
+    v_date        DATE := CURRENT_DATE;
+    v_uuid        UUID := gen_random_uuid();
+
+    -- Константа
+    c_tax_rate    CONSTANT NUMERIC := 0.20;
+
+    -- Тип строки таблицы (%ROWTYPE)
+    v_user_row    users%ROWTYPE;
+
+    -- Тип колонки (%TYPE)
+    v_email       users.email%TYPE;
+
+    -- Запись (гибкий тип)
+    v_record      RECORD;
+
+    -- Массив
+    v_arr         INTEGER[] := ARRAY[1, 2, 3];
+
+    -- JSONB
+    v_json        JSONB := '{"key": "value"}'::JSONB;
+BEGIN
+    -- Присваивание
+    v_bigint := 1000000;
+    v_text   := v_text || ', world!';
+
+    -- Присваивание через SELECT INTO
+    SELECT email INTO v_email
+    FROM users
+    WHERE user_id = 1;
+
+    RETURN format(
+        'int=%s, numeric=%s, text=%s, tax=%s',
+        v_integer, v_numeric, v_text, c_tax_rate
+    );
+END;
+$$;
+```
+
+### %TYPE и %ROWTYPE
+
+```sql
+-- Подготовка
+CREATE TABLE employees (
+    emp_id    SERIAL PRIMARY KEY,
+    full_name VARCHAR(100),
+    salary    NUMERIC(12, 2),
+    dept_id   INTEGER
+);
+
+INSERT INTO employees (full_name, salary, dept_id) VALUES
+    ('Alice Smith', 75000, 1),
+    ('Bob Jones',   60000, 2),
+    ('Carol White', 90000, 1);
+
+-- Использование %TYPE — тип берётся из колонки таблицы
+CREATE OR REPLACE FUNCTION get_employee_salary(p_emp_id INTEGER)
+RETURNS employees.salary%TYPE
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_salary employees.salary%TYPE;  -- Точно совпадает с типом колонки
+BEGIN
+    SELECT salary INTO STRICT v_salary
+    FROM employees
+    WHERE emp_id = p_emp_id;
+
+    RETURN v_salary;
+END;
+$$;
+
+-- %ROWTYPE — тип целой строки таблицы
+CREATE OR REPLACE FUNCTION get_employee(p_emp_id INTEGER)
+RETURNS employees%ROWTYPE
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_emp employees%ROWTYPE;
+BEGIN
+    SELECT * INTO STRICT v_emp
+    FROM employees
+    WHERE emp_id = p_emp_id;
+
+    RETURN v_emp;
+END;
+$$;
+
+-- Использование
+SELECT (get_employee(1)).full_name;   -- → Alice Smith
+SELECT (get_employee(1)).salary;      -- → 75000.00
+
+-- RECORD — гибкий тип строки
+CREATE OR REPLACE FUNCTION get_employee_stats(p_dept_id INTEGER)
+RETURNS RECORD
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_stats RECORD;
+BEGIN
+    SELECT
+        COUNT(*)      AS emp_count,
+        AVG(salary)   AS avg_salary,
+        MAX(salary)   AS max_salary,
+        MIN(salary)   AS min_salary
+    INTO v_stats
+    FROM employees
+    WHERE dept_id = p_dept_id;
+
+    RETURN v_stats;
+END;
+$$;
+
+-- Вызов RECORD-функции требует указания структуры
+SELECT * FROM get_employee_stats(1)
+    AS stats(emp_count BIGINT, avg_salary NUMERIC, max_salary NUMERIC, min_salary NUMERIC);
+```
+
+## Управляющие конструкции
+
+### IF / ELSIF / ELSE
+
+```sql
+CREATE OR REPLACE FUNCTION classify_salary(p_salary NUMERIC)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_grade TEXT;
+BEGIN
+    IF p_salary IS NULL THEN
+        v_grade := 'Unknown';
+    ELSIF p_salary < 30000 THEN
+        v_grade := 'Junior';
+    ELSIF p_salary < 60000 THEN
+        v_grade := 'Mid-level';
+    ELSIF p_salary < 100000 THEN
+        v_grade := 'Senior';
+    ELSE
+        v_grade := 'Principal';
+    END IF;
+
+    RETURN v_grade;
+END;
+$$;
+
+SELECT classify_salary(45000);  -- → Mid-level
+SELECT classify_salary(95000);  -- → Senior
+SELECT classify_salary(150000); -- → Principal
+```
+
+### CASE
+
+```sql
+CREATE OR REPLACE FUNCTION get_day_type(p_date DATE)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_dow     INTEGER;
+    v_result  TEXT;
+BEGIN
+    v_dow := EXTRACT(DOW FROM p_date); -- 0=Sun, 1=Mon, ..., 6=Sat
+
+    -- Простой CASE
+    v_result := CASE v_dow
+        WHEN 0 THEN 'Sunday'
+        WHEN 6 THEN 'Saturday'
+        ELSE 'Weekday'
+    END;
+
+    -- Поисковый CASE
+    v_result := CASE
+        WHEN v_dow IN (0, 6)    THEN 'Weekend'
+        WHEN v_dow = 1          THEN 'Monday — rough start'
+        WHEN v_dow = 5          THEN 'Friday — almost there!'
+        ELSE                         'Regular weekday'
+    END;
+
+    RETURN v_result;
+END;
+$$;
+
+SELECT get_day_type(CURRENT_DATE);
+SELECT get_day_type('2024-12-25'); -- 25 Dec 2024 — Wednesday
+```
+
+### LOOP, WHILE, FOR
+
+```sql
+-- Простой LOOP с EXIT
+CREATE OR REPLACE FUNCTION count_down(p_start INTEGER)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_counter INTEGER := p_start;
+    v_result  TEXT := '';
+BEGIN
+    LOOP
+        v_result  := v_result || v_counter::TEXT || ' ';
+        v_counter := v_counter - 1;
+        EXIT WHEN v_counter <= 0;
+    END LOOP;
+
+    RETURN TRIM(v_result);
+END;
+$$;
+
+SELECT count_down(5); -- → 5 4 3 2 1
+
+
+-- WHILE LOOP
+CREATE OR REPLACE FUNCTION fibonacci(p_n INTEGER)
+RETURNS BIGINT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_a     BIGINT := 0;
+    v_b     BIGINT := 1;
+    v_temp  BIGINT;
+    v_i     INTEGER := 0;
+BEGIN
+    IF p_n <= 0 THEN RETURN 0; END IF;
+    IF p_n = 1 THEN RETURN 1; END IF;
+
+    WHILE v_i < p_n - 1 LOOP
+        v_temp := v_a + v_b;
+        v_a    := v_b;
+        v_b    := v_temp;
+        v_i    := v_i + 1;
+    END LOOP;
+
+    RETURN v_b;
+END;
+$$;
+
+SELECT fibonacci(10); -- → 55
+SELECT fibonacci(20); -- → 6765
+
+
+-- FOR LOOP по диапазону
+CREATE OR REPLACE FUNCTION sum_range(p_from INTEGER, p_to INTEGER)
+RETURNS BIGINT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_sum BIGINT := 0;
+    v_i   INTEGER;
+BEGIN
+    FOR v_i IN p_from .. p_to LOOP
+        v_sum := v_sum + v_i;
+    END LOOP;
+    RETURN v_sum;
+END;
+$$;
+
+SELECT sum_range(1, 100); -- → 5050
+
+
+-- FOR LOOP по запросу
+CREATE OR REPLACE FUNCTION give_raise(p_dept_id INTEGER, p_pct NUMERIC)
+RETURNS INTEGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_emp   RECORD;
+    v_count INTEGER := 0;
+BEGIN
+    FOR v_emp IN
+        SELECT emp_id, full_name, salary
+        FROM employees
+        WHERE dept_id = p_dept_id
+        ORDER BY emp_id
+    LOOP
+        UPDATE employees
+        SET salary = salary * (1 + p_pct / 100)
+        WHERE emp_id = v_emp.emp_id;
+
+        RAISE NOTICE 'Raised salary for % from % to %',
+            v_emp.full_name,
+            v_emp.salary,
+            v_emp.salary * (1 + p_pct / 100);
+
+        v_count := v_count + 1;
+    END LOOP;
+
+    RETURN v_count;
+END;
+$$;
+
+SELECT give_raise(1, 10); -- повышает зарплату отдела 1 на 10%
+
+
+-- FOR LOOP по массиву
+CREATE OR REPLACE FUNCTION array_sum(p_arr NUMERIC[])
+RETURNS NUMERIC
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_element NUMERIC;
+    v_sum     NUMERIC := 0;
+BEGIN
+    FOREACH v_element IN ARRAY p_arr LOOP
+        v_sum := v_sum + v_element;
+    END LOOP;
+    RETURN v_sum;
+END;
+$$;
+
+SELECT array_sum(ARRAY[1.5, 2.5, 3.0, 4.0]); -- → 11
+```
+
+### CONTINUE в циклах
+
+```sql
+-- CONTINUE пропускает оставшееся тело итерации
+CREATE OR REPLACE FUNCTION sum_odd_numbers(p_limit INTEGER)
+RETURNS BIGINT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_i   INTEGER;
+    v_sum BIGINT := 0;
+BEGIN
+    FOR v_i IN 1 .. p_limit LOOP
+        CONTINUE WHEN v_i % 2 = 0; -- пропускаем чётные
+        v_sum := v_sum + v_i;
+    END LOOP;
+    RETURN v_sum;
+END;
+$$;
+
+SELECT sum_odd_numbers(10); -- 1+3+5+7+9 = 25
+```
+
+## Работа с курсорами
+
+### Явные курсоры
+
+```sql
+-- Явный курсор: открываем, читаем построчно, закрываем
+CREATE OR REPLACE FUNCTION process_large_table()
+RETURNS INTEGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    -- Объявление курсора
+    cur_employees CURSOR FOR
+        SELECT emp_id, full_name, salary
+        FROM employees
+        ORDER BY emp_id;
+
+    v_row    RECORD;
+    v_count  INTEGER := 0;
+BEGIN
+    OPEN cur_employees;
+
+    LOOP
+        FETCH cur_employees INTO v_row;
+        EXIT WHEN NOT FOUND;
+
+        -- Обрабатываем строку
+        RAISE NOTICE 'Processing employee: % (salary: %)',
+            v_row.full_name, v_row.salary;
+
+        v_count := v_count + 1;
+    END LOOP;
+
+    CLOSE cur_employees;
+    RETURN v_count;
+END;
+$$;
+
+
+-- Курсор с параметрами
+CREATE OR REPLACE FUNCTION get_dept_employees(p_dept_id INTEGER)
+RETURNS SETOF employees
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    cur_dept CURSOR(dept INTEGER) FOR
+        SELECT * FROM employees WHERE dept_id = dept;
+    v_row employees%ROWTYPE;
+BEGIN
+    OPEN cur_dept(p_dept_id);
+
+    LOOP
+        FETCH cur_dept INTO v_row;
+        EXIT WHEN NOT FOUND;
+        RETURN NEXT v_row;
+    END LOOP;
+
+    CLOSE cur_dept;
+END;
+$$;
+
+SELECT * FROM get_dept_employees(1);
+
+
+-- Refcursor: передаём курсор из функции наружу
+CREATE OR REPLACE FUNCTION get_employees_cursor(p_dept_id INTEGER)
+RETURNS refcursor
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    ref refcursor := 'emp_cursor';
+BEGIN
+    OPEN ref FOR
+        SELECT * FROM employees WHERE dept_id = p_dept_id;
+    RETURN ref;
+END;
+$$;
+
+-- Использование в транзакции
+BEGIN;
+    SELECT get_employees_cursor(1); -- открывает курсор
+    FETCH ALL FROM emp_cursor;       -- читаем все строки
+COMMIT;                              -- курсор закрывается
+```
+
+## Обработка исключений
+
+### EXCEPTION блок
+
+```sql
+CREATE OR REPLACE FUNCTION safe_get_employee(p_emp_id INTEGER)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_name employees.full_name%TYPE;
+BEGIN
+    SELECT full_name INTO STRICT v_name
+    FROM employees
+    WHERE emp_id = p_emp_id;
+
+    RETURN v_name;
+
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RETURN format('Employee #%s not found', p_emp_id);
+
+    WHEN TOO_MANY_ROWS THEN
+        RETURN 'Multiple employees found — unexpected';
+
+    WHEN OTHERS THEN
+        RAISE WARNING 'Unexpected error: %', SQLERRM;
+        RETURN NULL;
+END;
+$$;
+
+SELECT safe_get_employee(1);    -- → Alice Smith
+SELECT safe_get_employee(9999); -- → Employee #9999 not found
+```
+
+### Стандартные коды ошибок
+
+```sql
+CREATE OR REPLACE FUNCTION demo_exception_codes()
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Намеренно вызываем ошибки для демонстрации
+    BEGIN
+        RAISE EXCEPTION 'custom error' USING ERRCODE = 'P0001';
+    EXCEPTION
+        WHEN SQLSTATE 'P0001' THEN
+            RAISE NOTICE 'Caught custom P0001';
+    END;
+
+    BEGIN
+        PERFORM 1 / 0;
+    EXCEPTION
+        WHEN division_by_zero THEN   -- SQLSTATE 22012
+            RAISE NOTICE 'Caught division_by_zero';
+    END;
+
+    BEGIN
+        PERFORM 'abc'::INTEGER;
+    EXCEPTION
+        WHEN invalid_text_representation THEN  -- SQLSTATE 22P02
+            RAISE NOTICE 'Caught invalid_text_representation';
+    END;
+
+    BEGIN
+        INSERT INTO employees(full_name, salary, dept_id)
+        VALUES ('Test', -100, 1);
+    EXCEPTION
+        WHEN check_violation THEN           -- SQLSTATE 23514
+            RAISE NOTICE 'Caught check_violation';
+        WHEN not_null_violation THEN        -- SQLSTATE 23502
+            RAISE NOTICE 'Caught not_null_violation';
+        WHEN unique_violation THEN          -- SQLSTATE 23505
+            RAISE NOTICE 'Caught unique_violation';
+        WHEN foreign_key_violation THEN     -- SQLSTATE 23503
+            RAISE NOTICE 'Caught foreign_key_violation';
+    END;
+END;
+$$;
+```
+
+### GET DIAGNOSTICS и SQLERRM
+
+```sql
+CREATE OR REPLACE FUNCTION update_salary_with_log(
+    p_emp_id  INTEGER,
+    p_new_sal NUMERIC
+) RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_affected  INTEGER;
+    v_old_sal   employees.salary%TYPE;
+BEGIN
+    -- Сохраняем старое значение
+    SELECT salary INTO v_old_sal FROM employees WHERE emp_id = p_emp_id;
+
+    UPDATE employees
+    SET salary = p_new_sal
+    WHERE emp_id = p_emp_id;
+
+    -- Сколько строк обновлено
+    GET DIAGNOSTICS v_affected = ROW_COUNT;
+
+    IF v_affected = 0 THEN
+        RETURN format('Employee #%s not found', p_emp_id);
+    END IF;
+
+    RETURN format('Updated emp #%s: %s → %s', p_emp_id, v_old_sal, p_new_sal);
+
+EXCEPTION WHEN OTHERS THEN
+    -- SQLERRM — текст ошибки, SQLSTATE — код
+    RETURN format('Error [%s]: %s', SQLSTATE, SQLERRM);
+END;
+$$;
+
+SELECT update_salary_with_log(1, 80000);
+SELECT update_salary_with_log(9999, 80000);
+```
+
+### Пользовательские исключения с RAISE
+
+```sql
+CREATE OR REPLACE FUNCTION transfer_salary_budget(
+    p_from_dept INTEGER,
+    p_to_dept   INTEGER,
+    p_amount    NUMERIC
+) RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_from_total  NUMERIC;
+    v_to_total    NUMERIC;
+BEGIN
+    SELECT SUM(salary) INTO v_from_total
+    FROM employees WHERE dept_id = p_from_dept;
+
+    IF v_from_total IS NULL THEN
+        RAISE EXCEPTION 'Department % not found', p_from_dept
+            USING ERRCODE = 'P0002',
+                  HINT    = 'Check the department ID',
+                  DETAIL  = format('dept_id = %s', p_from_dept);
+    END IF;
+
+    IF v_from_total < p_amount THEN
+        RAISE EXCEPTION 'Insufficient budget: have %, need %',
+            v_from_total, p_amount
+            USING ERRCODE = 'P0003';
+    END IF;
+
+    -- Логика перевода...
+    RAISE NOTICE 'Transferring % from dept % to dept %',
+        p_amount, p_from_dept, p_to_dept;
+
+    RETURN format('Success: transferred %s', p_amount);
+END;
+$$;
+
+-- Уровни RAISE
+CREATE OR REPLACE FUNCTION demo_raise_levels()
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE DEBUG   'DEBUG: lowest level, shown with log_min_messages=debug';
+    RAISE LOG     'LOG: goes to server log';
+    RAISE INFO    'INFO: informational';
+    RAISE NOTICE  'NOTICE: default client-visible level';
+    RAISE WARNING 'WARNING: visible warning';
+    -- RAISE EXCEPTION 'EXCEPTION: aborts current transaction';
+END;
+$$;
+```
+
+## Возвращаемые типы
+
+### RETURNS TABLE и SETOF
+
+```sql
+-- RETURNS TABLE: объявляем структуру прямо в сигнатуре
+CREATE OR REPLACE FUNCTION get_top_earners(p_limit INTEGER DEFAULT 5)
+RETURNS TABLE(
+    rank_num   BIGINT,
+    emp_name   TEXT,
+    salary     NUMERIC,
+    dept_id    INTEGER
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+        SELECT
+            ROW_NUMBER() OVER (ORDER BY e.salary DESC),
+            e.full_name,
+            e.salary,
+            e.dept_id
+        FROM employees e
+        ORDER BY e.salary DESC
+        LIMIT p_limit;
+END;
+$$;
+
+SELECT * FROM get_top_earners(3);
+
+
+-- SETOF: возвращаем набор строк типа таблицы
+CREATE OR REPLACE FUNCTION get_dept_employees_setof(p_dept_id INTEGER)
+RETURNS SETOF employees
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+        SELECT * FROM employees WHERE dept_id = p_dept_id ORDER BY emp_id;
+END;
+$$;
+
+SELECT * FROM get_dept_employees_setof(1);
+
+
+-- RETURN NEXT для построчного возврата
+CREATE OR REPLACE FUNCTION generate_salary_report()
+RETURNS TABLE(dept_id INTEGER, dept_total NUMERIC, emp_count BIGINT)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_dept RECORD;
+BEGIN
+    FOR v_dept IN
+        SELECT e.dept_id,
+               SUM(e.salary) AS total,
+               COUNT(*)      AS cnt
+        FROM employees e
+        GROUP BY e.dept_id
+        ORDER BY e.dept_id
+    LOOP
+        dept_id    := v_dept.dept_id;
+        dept_total := v_dept.total;
+        emp_count  := v_dept.cnt;
+        RETURN NEXT;
+    END LOOP;
+END;
+$$;
+
+SELECT * FROM generate_salary_report();
+
+
+-- OUT параметры вместо RETURNS
+CREATE OR REPLACE FUNCTION get_salary_bounds(
+    p_dept_id  INTEGER,
+    OUT min_s  NUMERIC,
+    OUT max_s  NUMERIC,
+    OUT avg_s  NUMERIC
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    SELECT MIN(salary), MAX(salary), AVG(salary)
+    INTO min_s, max_s, avg_s
+    FROM employees
+    WHERE dept_id = p_dept_id;
+END;
+$$;
+
+SELECT * FROM get_salary_bounds(1);
+-- min_s | max_s | avg_s
+```
+
+## Динамический SQL
+
+### EXECUTE
+
+```sql
+-- Динамическое имя таблицы
+CREATE OR REPLACE FUNCTION count_table_rows(p_table_name TEXT)
+RETURNS BIGINT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_count BIGINT;
+    v_sql   TEXT;
+BEGIN
+    -- Используем format() для безопасного подставления идентификаторов
+    v_sql := format('SELECT COUNT(*) FROM %I', p_table_name);
+
+    EXECUTE v_sql INTO v_count;
+    RETURN v_count;
+END;
+$$;
+
+SELECT count_table_rows('employees'); -- безопасно
+
+
+-- EXECUTE с параметрами через USING (защита от SQL injection)
+CREATE OR REPLACE FUNCTION search_employees(
+    p_column TEXT,
+    p_value  TEXT
+) RETURNS SETOF employees
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_sql TEXT;
+BEGIN
+    -- %I — идентификатор (экранируется), $1 — параметр
+    v_sql := format('SELECT * FROM employees WHERE %I = $1', p_column);
+
+    RETURN QUERY EXECUTE v_sql USING p_value;
+END;
+$$;
+
+SELECT * FROM search_employees('full_name', 'Alice Smith');
+
+
+-- Динамическое создание таблицы-лога
+CREATE OR REPLACE FUNCTION create_monthly_log_table()
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_table_name TEXT;
+    v_sql        TEXT;
+BEGIN
+    v_table_name := 'logs_' || TO_CHAR(CURRENT_DATE, 'YYYY_MM');
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_class WHERE relname = v_table_name
+    ) THEN
+        v_sql := format(
+            'CREATE TABLE %I (
+                log_id    SERIAL PRIMARY KEY,
+                message   TEXT,
+                level     TEXT DEFAULT ''INFO'',
+                logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )',
+            v_table_name
+        );
+
+        EXECUTE v_sql;
+        RETURN 'Created: ' || v_table_name;
+    ELSE
+        RETURN 'Already exists: ' || v_table_name;
+    END IF;
+END;
+$$;
+
+SELECT create_monthly_log_table();
+```
+
+### Динамические запросы с условиями
+
+```sql
+-- Динамический фильтр поиска
+CREATE OR REPLACE FUNCTION search_employees_dynamic(
+    p_min_salary  NUMERIC  DEFAULT NULL,
+    p_max_salary  NUMERIC  DEFAULT NULL,
+    p_dept_id     INTEGER  DEFAULT NULL,
+    p_name_like   TEXT     DEFAULT NULL
+) RETURNS SETOF employees
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_sql       TEXT := 'SELECT * FROM employees WHERE 1=1';
+    v_params    TEXT[] := ARRAY[]::TEXT[];
+    v_param_idx INTEGER := 1;
+BEGIN
+    IF p_min_salary IS NOT NULL THEN
+        v_sql      := v_sql || format(' AND salary >= $%s', v_param_idx);
+        v_params   := v_params || p_min_salary::TEXT;
+        v_param_idx := v_param_idx + 1;
+    END IF;
+
+    IF p_max_salary IS NOT NULL THEN
+        v_sql      := v_sql || format(' AND salary <= $%s', v_param_idx);
+        v_params   := v_params || p_max_salary::TEXT;
+        v_param_idx := v_param_idx + 1;
+    END IF;
+
+    IF p_dept_id IS NOT NULL THEN
+        v_sql      := v_sql || format(' AND dept_id = $%s', v_param_idx);
+        v_params   := v_params || p_dept_id::TEXT;
+        v_param_idx := v_param_idx + 1;
+    END IF;
+
+    IF p_name_like IS NOT NULL THEN
+        v_sql      := v_sql || format(' AND full_name ILIKE $%s', v_param_idx);
+        v_params   := v_params || ('%' || p_name_like || '%');
+        v_param_idx := v_param_idx + 1;
+    END IF;
+
+    v_sql := v_sql || ' ORDER BY emp_id';
+
+    RETURN QUERY EXECUTE v_sql
+        USING   -- Передаём параметры динамически
+            CASE WHEN array_length(v_params,1) >= 1 THEN v_params[1]::NUMERIC ELSE NULL END,
+            CASE WHEN array_length(v_params,1) >= 2 THEN v_params[2]::NUMERIC ELSE NULL END,
+            CASE WHEN array_length(v_params,1) >= 3 THEN v_params[3]::INTEGER ELSE NULL END,
+            CASE WHEN array_length(v_params,1) >= 4 THEN v_params[4]         ELSE NULL END;
+END;
+$$;
+
+SELECT * FROM search_employees_dynamic(p_dept_id := 1, p_min_salary := 70000);
+```
+
+:::tip Безопасность динамического SQL
+Всегда используйте `format('%I', ...)` для идентификаторов и `USING $1, $2, ...` для значений. Никогда не конкатенируйте пользовательский ввод напрямую в SQL-строку — это открытая дверь для SQL-инъекций.
+:::
+
+## Хранимые процедуры (PROCEDURE)
+
+### Отличие от функций: управление транзакциями
+
+```sql
+-- Процедура с явным управлением транзакциями
+CREATE OR REPLACE PROCEDURE bulk_give_raise(
+    p_dept_id  INTEGER,
+    p_pct      NUMERIC,
+    p_batch    INTEGER DEFAULT 100
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_emp_id   INTEGER;
+    v_count    INTEGER := 0;
+BEGIN
+    FOR v_emp_id IN
+        SELECT emp_id FROM employees
+        WHERE dept_id = p_dept_id
+        ORDER BY emp_id
+    LOOP
+        UPDATE employees
+        SET salary = salary * (1 + p_pct / 100)
+        WHERE emp_id = v_emp_id;
+
+        v_count := v_count + 1;
+
+        -- Коммитим каждые p_batch записей
+        IF v_count % p_batch = 0 THEN
+            COMMIT;
+            RAISE NOTICE 'Committed batch of %, total so far: %', p_batch, v_count;
+        END IF;
+    END LOOP;
+
+    -- Финальный коммит остатка
+    COMMIT;
+    RAISE NOTICE 'All done. Total updated: %', v_count;
+END;
+$$;
+
+-- Вызов процедуры через CALL (не SELECT!)
+CALL bulk_give_raise(p_dept_id := 1, p_pct := 5, p_batch := 50);
+
+
+-- Процедура с ROLLBACK при ошибке
+CREATE OR REPLACE PROCEDURE safe_bulk_insert(p_data JSONB)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_item    JSONB;
+    v_ok      INTEGER := 0;
+    v_failed  INTEGER := 0;
+BEGIN
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p_data)
+    LOOP
+        BEGIN
+            INSERT INTO employees (full_name, salary, dept_id)
+            VALUES (
+                v_item->>'name',
+                (v_item->>'salary')::NUMERIC,
+                (v_item->>'dept_id')::INTEGER
+            );
+            v_ok := v_ok + 1;
+            COMMIT;
+
+        EXCEPTION WHEN OTHERS THEN
+            ROLLBACK;
+            v_failed := v_failed + 1;
+            RAISE WARNING 'Failed to insert %: %', v_item->>'name', SQLERRM;
+        END;
+    END LOOP;
+
+    RAISE NOTICE 'Done. Inserted: %, Failed: %', v_ok, v_failed;
+END;
+$$;
+
+CALL safe_bulk_insert('[
+    {"name": "Dave",  "salary": 55000, "dept_id": 1},
+    {"name": "Eve",   "salary": 70000, "dept_id": 2},
+    {"name": "Frank", "salary": -1,    "dept_id": 1}
+]'::JSONB);
+```
+
+## Overloading: Перегрузка функций
+
+```sql
+-- Одно имя — разные сигнатуры
+CREATE OR REPLACE FUNCTION format_salary(p_salary NUMERIC)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN '$' || TO_CHAR(p_salary, 'FM999,999,990.00');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION format_salary(p_salary NUMERIC, p_currency TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN p_currency || ' ' || TO_CHAR(p_salary, 'FM999,999,990.00');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION format_salary(p_salary NUMERIC, p_currency TEXT, p_locale TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN CASE p_locale
+        WHEN 'ru' THEN TO_CHAR(p_salary, 'FM999G999G990D00') || ' ' || p_currency
+        ELSE            p_currency || ' ' || TO_CHAR(p_salary, 'FM999,999,990.00')
+    END;
+END;
+$$;
+
+SELECT format_salary(75000);               -- $75,000.00
+SELECT format_salary(75000, 'EUR');        -- EUR 75,000.00
+SELECT format_salary(75000, 'RUB', 'ru'); -- 75 000,00 RUB
+```
+
+## Рекурсивные функции
+
+```sql
+-- Вычисление факториала
+CREATE OR REPLACE FUNCTION factorial(n BIGINT)
+RETURNS BIGINT
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+BEGIN
+    IF n <= 1 THEN RETURN 1; END IF;
+    RETURN n * factorial(n - 1);
+END;
+$$;
+
+SELECT factorial(10); -- → 3628800
+
+
+-- Рекурсивный обход дерева категорий
+CREATE TABLE categories (
+    cat_id     SERIAL PRIMARY KEY,
+    cat_name   TEXT NOT NULL,
+    parent_id  INTEGER REFERENCES categories(cat_id)
+);
+
+INSERT INTO categories (cat_id, cat_name, parent_id) VALUES
+    (1, 'Electronics', NULL),
+    (2, 'Computers', 1),
+    (3, 'Laptops', 2),
+    (4, 'Gaming Laptops', 3),
+    (5, 'Phones', 1),
+    (6, 'Smartphones', 5);
+
+CREATE OR REPLACE FUNCTION get_category_path(p_cat_id INTEGER)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_cat    RECORD;
+    v_parent TEXT;
+BEGIN
+    SELECT cat_id, cat_name, parent_id INTO v_cat
+    FROM categories WHERE cat_id = p_cat_id;
+
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+
+    IF v_cat.parent_id IS NULL THEN
+        RETURN v_cat.cat_name;
+    END IF;
+
+    v_parent := get_category_path(v_cat.parent_id);
+    RETURN v_parent || ' → ' || v_cat.cat_name;
+END;
+$$;
+
+SELECT cat_id, cat_name, get_category_path(cat_id) AS full_path
+FROM categories
+ORDER BY cat_id;
+-- 4 | Gaming Laptops | Electronics → Computers → Laptops → Gaming Laptops
+```
+
+## Управление функциями
+
+### Просмотр, изменение, удаление
+
+```sql
+-- Просмотр всех функций схемы
+SELECT
+    n.nspname        AS schema,
+    p.proname        AS function_name,
+    pg_get_function_arguments(p.oid) AS arguments,
+    t.typname        AS return_type,
+    p.prosecdef      AS security_definer,
+    p.provolatile    AS volatility,  -- i=immutable, s=stable, v=volatile
+    p.prolang::regproc AS language
+FROM pg_proc p
+JOIN pg_namespace n ON p.pronamespace = n.oid
+JOIN pg_type     t ON p.prorettype    = t.oid
+WHERE n.nspname = 'public'
+ORDER BY p.proname;
+
+
+-- Просмотр исходного кода функции
+SELECT pg_get_functiondef('get_top_earners(integer)'::regprocedure);
+
+
+-- Просмотр зависимостей
+SELECT
+    dep.classid::regclass,
+    dep.objid,
+    dep.deptype,
+    pg_describe_object(dep.classid, dep.objid, 0) AS object_description
+FROM pg_depend dep
+WHERE dep.refobjid = 'get_top_earners(integer)'::regprocedure;
+
+
+-- Удаление функции
+DROP FUNCTION get_top_earners(INTEGER);
+
+-- С каскадом (удалить зависимые объекты)
+DROP FUNCTION IF EXISTS get_top_earners(INTEGER) CASCADE;
+
+-- Удаление процедуры
+DROP PROCEDURE IF EXISTS bulk_give_raise(INTEGER, NUMERIC, INTEGER);
+
+
+-- Изменение свойств без пересоздания
+ALTER FUNCTION say_hello(TEXT) STABLE;
+ALTER FUNCTION say_hello(TEXT) RENAME TO greet;
+ALTER FUNCTION greet(TEXT) SET SCHEMA private;
+ALTER FUNCTION private.greet(TEXT) OWNER TO admin_role;
+
+-- Комментарий к функции
+COMMENT ON FUNCTION greet(TEXT)
+IS 'Returns a greeting string for the given name';
+
+-- Просмотр комментариев
+SELECT obj_description('greet(text)'::regprocedure, 'pg_proc');
+```
+
+## Практический пример: Система начисления бонусов
+
+```sql
+-- Полноценная функция с несколькими техниками PL/pgSQL
+CREATE TABLE bonus_config (
+    tier          TEXT PRIMARY KEY,
+    base_pct      NUMERIC,
+    performance_multiplier NUMERIC
+);
+
+INSERT INTO bonus_config VALUES
+    ('junior',    5,  1.0),
+    ('mid-level', 8,  1.2),
+    ('senior',    12, 1.5),
+    ('principal', 20, 2.0);
+
+CREATE TABLE bonuses (
+    bonus_id   SERIAL PRIMARY KEY,
+    emp_id     INTEGER REFERENCES employees(emp_id),
+    amount     NUMERIC(12,2),
+    tier       TEXT,
+    calc_date  DATE DEFAULT CURRENT_DATE
+);
+
+CREATE OR REPLACE FUNCTION calculate_and_award_bonuses(
+    p_dept_id     INTEGER DEFAULT NULL,
+    p_dry_run     BOOLEAN DEFAULT TRUE
+) RETURNS TABLE(
+    emp_id        INTEGER,
+    emp_name      TEXT,
+    salary        NUMERIC,
+    tier          TEXT,
+    bonus_amount  NUMERIC,
+    inserted      BOOLEAN
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_emp     RECORD;
+    v_config  bonus_config%ROWTYPE;
+    v_tier    TEXT;
+    v_bonus   NUMERIC;
+    v_total   NUMERIC := 0;
+    v_count   INTEGER := 0;
+BEGIN
+    FOR v_emp IN
+        SELECT e.emp_id, e.full_name, e.salary, e.dept_id
+        FROM employees e
+        WHERE (p_dept_id IS NULL OR e.dept_id = p_dept_id)
+        ORDER BY e.dept_id, e.salary DESC
+    LOOP
+        -- Определяем tier
+        v_tier := classify_salary(v_emp.salary);
+
+        -- Получаем конфиг
+        BEGIN
+            SELECT * INTO STRICT v_config
+            FROM bonus_config WHERE tier = v_tier;
+        EXCEPTION WHEN NO_DATA_FOUND THEN
+            RAISE WARNING 'No bonus config for tier %; skipping emp %',
+                v_tier, v_emp.emp_id;
+            CONTINUE;
+        END;
+
+        -- Считаем бонус
+        v_bonus := v_emp.salary
+                 * (v_config.base_pct / 100)
+                 * v_config.performance_multiplier;
+
+        v_bonus := ROUND(v_bonus, 2);
+        v_total := v_total + v_bonus;
+        v_count := v_count + 1;
+
+        -- Записываем если не dry-run
+        IF NOT p_dry_run THEN
+            INSERT INTO bonuses (emp_id, amount, tier)
+            VALUES (v_emp.emp_id, v_bonus, v_tier);
+        END IF;
+
+        -- Возвращаем строку результата
+        emp_id       := v_emp.emp_id;
+        emp_name     := v_emp.full_name;
+        salary       := v_emp.salary;
+        tier         := v_tier;
+        bonus_amount := v_bonus;
+        inserted     := NOT p_dry_run;
+        RETURN NEXT;
+    END LOOP;
+
+    RAISE NOTICE '[%] Processed % employees, total bonuses: %',
+        CASE WHEN p_dry_run THEN 'DRY RUN' ELSE 'COMMITTED' END,
+        v_count,
+        v_total;
+END;
+$$;
+
+-- Предварительный просмотр без записи
+SELECT * FROM calculate_and_award_bonuses(p_dry_run := TRUE);
+
+-- Реальное начисление для отдела 1
+SELECT * FROM calculate_and_award_bonuses(p_dept_id := 1, p_dry_run := FALSE);
+```
+
+## Заключение
+
+PL/pgSQL — полноценный процедурный язык прямо внутри PostgreSQL. Ключевые выводы:
+
+1. **Функции vs Процедуры** — функции возвращают значения, процедуры управляют транзакциями
+2. **Переменные** — используйте `%TYPE` и `%ROWTYPE` для типобезопасности
+3. **Управление потоком** — IF/CASE, LOOP/WHILE/FOR, CONTINUE, EXIT
+4. **Курсоры** — явные и refcursor для потоковой обработки
+5. **Исключения** — всегда обрабатывайте ошибки явно
+6. **Динамический SQL** — `EXECUTE ... USING` и `format('%I', ...)` для безопасности
+7. **Возвращаемые типы** — RETURNS TABLE, SETOF, OUT-параметры
+8. **Процедуры** — `CALL`, `COMMIT/ROLLBACK` внутри тела
+
+:::tip Золотое правило
+Выносите в PL/pgSQL только то, что действительно принадлежит БД: контроль целостности, атомарные операции и сложные вычисления над данными. Бизнес-логику высокого уровня лучше держать в приложении.
+:::
+
+## Дополнительные ресурсы
+
+- [PostgreSQL: PL/pgSQL Documentation](https://www.postgresql.org/docs/current/plpgsql.html)
+- [PostgreSQL: CREATE FUNCTION](https://www.postgresql.org/docs/current/sql-createfunction.html)
+- [PostgreSQL: CREATE PROCEDURE](https://www.postgresql.org/docs/current/sql-createprocedure.html)
+- [PostgreSQL: Error Codes](https://www.postgresql.org/docs/current/errcodes-appendix.html)

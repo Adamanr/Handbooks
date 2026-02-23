@@ -1,0 +1,216 @@
+---
+sidebar_position: 9
+description: "Практика по EXPLAIN, EXPLAIN ANALYZE, чтению планов, поиску узких мест и оптимизации"
+---
+
+import { RandomVariantButton, TaskWithVariants, CodeBlockPostgres } from "../../src/components/practicModules/practic";
+
+# Практика: Анализ производительности (EXPLAIN / ANALYZE)
+
+<CodeBlockPostgres />
+
+## Задание 1 — Чтение простых планов EXPLAIN
+
+<TaskWithVariants
+  taskId="explain-1-basic"
+  title="Задание 1: Простые планы EXPLAIN — что делает PostgreSQL?"
+  difficulty={["Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий"]}
+  estimatedTime="15-25 минут"
+  description="Запусти EXPLAIN на разных запросах и определи тип сканирования, стоимость и примерное время."
+  variants={[
+    "SELECT * FROM users WHERE country = 'Russia'",
+    "SELECT * FROM users WHERE id = 12345",
+    "SELECT * FROM orders WHERE order_date > '2025-01-01'",
+    "SELECT username FROM users ORDER BY created_at DESC LIMIT 100",
+    "SELECT * FROM users WHERE email LIKE 'user12%'",
+    "SELECT COUNT(*) FROM orders WHERE status = 'delivered'",
+    "SELECT user_id, COUNT(*) FROM orders GROUP BY user_id LIMIT 10",
+    "SELECT * FROM users WHERE is_active = true AND country = 'USA'",
+    "SELECT DISTINCT country FROM users",
+    "SELECT * FROM order_items WHERE quantity > 5",
+    "SELECT * FROM users ORDER BY username",
+    "SELECT AVG(total_amount) FROM orders"
+  ]}
+>
+
+**Требования:**
+- выполни `EXPLAIN` (без ANALYZE) на каждом запросе
+- определи для каждого:
+  - тип сканирования (Seq Scan, Index Scan, Bitmap Index Scan и т.д.)
+  - примерную стоимость (cost=...)
+  - оценочное количество строк (rows=...)
+  - будет ли использован индекс и какой
+- напиши, почему PostgreSQL выбрал именно этот план
+
+Пример ответа:
+```text
+Запрос: SELECT * FROM users WHERE country = 'Russia'
+План: Bitmap Heap Scan → Bitmap Index Scan на idx_users_country
+cost=234..4567, rows≈20000
+Объяснение: селективность country ≈ 20%, индекс есть → bitmap лучше seq scan
+```
+</TaskWithVariants>
+
+## Задание 2 — EXPLAIN ANALYZE: реальность vs оценка
+
+<TaskWithVariants
+  taskId="explain-2-analyze"
+  title="Задание 2: Сравнение оценок и реальности (EXPLAIN ANALYZE)"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="25-40 минут"
+  description="Запусти EXPLAIN ANALYZE и найди расхождения между планом и фактом."
+  variants={[
+    "SELECT * FROM users WHERE country = 'Russia'",
+    "SELECT * FROM orders WHERE status = 'delivered' AND total_amount > 500",
+    "SELECT u.username, COUNT(o.id) FROM users u JOIN orders o ON u.id = o.user_id GROUP BY u.id",
+    "SELECT * FROM order_items WHERE quantity > 5 ORDER BY price DESC LIMIT 1000",
+    "SELECT user_id, SUM(total_amount) FROM orders GROUP BY user_id HAVING SUM(total_amount) > 10000",
+    "SELECT * FROM users ORDER BY created_at DESC LIMIT 50",
+    "SELECT DISTINCT shipping_country FROM orders",
+    "SELECT * FROM users WHERE email LIKE '%@example.com'",
+    "SELECT AVG(total_amount) FROM orders WHERE order_date >= CURRENT_DATE - INTERVAL '30 days'",
+    "SELECT u.country, COUNT(*) FROM users u JOIN orders o ON u.id = o.user_id GROUP BY u.country",
+    "SELECT * FROM order_items oi JOIN orders o ON oi.order_id = o.id WHERE o.status = 'shipped'",
+    "SELECT product_id, COUNT(*) FROM order_items GROUP BY product_id ORDER BY COUNT(*) DESC LIMIT 10"
+  ]}
+>
+
+**Требования:**
+- выполни `EXPLAIN (ANALYZE, BUFFERS)` на каждом запросе
+- сравни:
+  - оценочные rows vs actual rows
+  - actual time (особенно разница между startup и total time)
+  - Buffers: много ли read (чтение с диска)?
+  - есть ли Sort / Hash с Disk (внешняя сортировка)?
+- укажи 1–2 возможные причины расхождений (устаревшая статистика, плохая селективность, нехватка индексов)
+- предложи хотя бы одно улучшение (индекс, переписывание запроса, ANALYZE)
+
+Пример:
+```text
+Оценка: rows=5000, actual rows=45678 → расхождение в 9 раз
+actual time=0.1..234 ms, Buffers: shared read=5678
+Причина: устаревшая статистика или неверная оценка селективности status + total_amount
+Улучшение: CREATE INDEX idx_orders_status_amount ON orders(status, total_amount);
+```
+</TaskWithVariants>
+
+## Задание 3 — Поиск узких мест и оптимизация
+
+<TaskWithVariants
+  taskId="explain-3-bottleneck"
+  title="Задание 3: Найди и устрани узкие места"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="30-50 минут"
+  description="Определи, почему запрос медленный, и предложи оптимизацию."
+  variants={[
+    "Медленный подсчёт заказов за месяц: SELECT COUNT(*) FROM orders WHERE order_date >= CURRENT_DATE - INTERVAL '30 days'",
+    "Тяжёлый JOIN: SELECT u.*, o.* FROM users u JOIN orders o ON u.id = o.user_id WHERE u.country = 'Russia'",
+    "Сортировка без индекса: SELECT * FROM users ORDER BY created_at DESC LIMIT 100",
+    "Группировка по неиндексированному полю: SELECT status, COUNT(*) FROM orders GROUP BY status",
+    "Много дисковых операций: SELECT * FROM order_items ORDER BY price DESC LIMIT 5000",
+    "Подзапрос тормозит: SELECT * FROM users WHERE id IN (SELECT user_id FROM orders WHERE total_amount > 1000)",
+    "LIKE '%text%' без триграмм: SELECT * FROM users WHERE email LIKE '%@gmail.com'",
+    "Дорогой агрегат: SELECT user_id, SUM(total_amount) FROM orders GROUP BY user_id",
+    "Медленный DISTINCT: SELECT DISTINCT shipping_country FROM orders",
+    "Тяжёлый фильтр + сортировка: SELECT * FROM orders WHERE status = 'delivered' ORDER BY total_amount DESC LIMIT 100",
+    "COUNT с фильтром: SELECT COUNT(*) FROM order_items WHERE quantity > 10",
+    "JOIN с большой таблицей: SELECT u.username, oi.price FROM users u JOIN order_items oi ON u.id = oi.order_id LIMIT 100"
+  ]}
+>
+
+**Требования:**
+- выполни `EXPLAIN ANALYZE (BUFFERS)` на исходном запросе
+- определи главный узкий узел (Seq Scan, Sort Disk, Hash Join с большим объёмом, много read и т.д.)
+- предложи минимум 1–2 улучшения (новый индекс, переписанный запрос, ограничение фильтра, ANALYZE и т.д.)
+- покажи пример плана после оптимизации (можно описать словами или запустить)
+
+Пример:
+```text
+Узкое место: Seq Scan on orders + Filter → 500k строк
+Решение: CREATE INDEX idx_orders_date ON orders(order_date);
+Новый план: Index Scan using idx_orders_date
+```
+</TaskWithVariants>
+
+## Задание 4 — Статистика, bloat, неиспользуемые индексы
+
+<TaskWithVariants
+  taskId="explain-4-stats"
+  title="Задание 4: Анализ статистики, раздутия и мёртвых индексов"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="25-45 минут"
+  description="Проверь здоровье таблиц и индексов."
+  variants={[
+    "Сколько живых и мёртвых строк в таблице orders?",
+    "Какая корреляция у колонки order_date в orders?",
+    "Сколько изменений с последнего ANALYZE в users?",
+    "Найди неиспользуемые индексы (idx_scan = 0)",
+    "Сколько места занимают индексы таблицы users?",
+    "Какой процент dead tuples в order_items?",
+    "Самые частые значения в колонке status таблицы orders",
+    "Сколько буферов читается с диска при Seq Scan orders?",
+    "Сравни размер таблицы и индексов (pg_total_relation_size)",
+    "Проверь, обновлялась ли статистика после массовой вставки",
+    "Найди колонки с высокой n_distinct (много уникальных значений)",
+    "Оцени раздутие (bloat) таблицы orders"
+  ]}
+>
+
+**Требования:**
+- используй запросы из лекции (`pg_stat_user_tables`, `pg_stats`, `pg_stat_user_indexes`)
+- сделай 4–6 разных проверок
+- для каждого результата напиши вывод:
+  - нормально / проблема / требует внимания
+  - что делать (ANALYZE, VACUUM, удалить индекс, увеличить target и т.д.)
+
+Пример:
+```text
+n_dead_tup = 120000, dead_percentage ≈ 19% → таблица раздалась
+Действие: VACUUM FULL orders; или настрой autovacuum агрессивнее
+```
+</TaskWithVariants>
+
+## Задание 5 — Итоговый аудит производительности
+
+<TaskWithVariants
+  taskId="explain-5-final"
+  title="Задание 5: Полный аудит запросов и схемы (итоговое)"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="90-150 минут"
+  description="Проведи аудит реальной нагрузки и предложи оптимизации."
+  variants={[
+    "Интернет-магазин: топ-10 самых медленных запросов",
+    "Блог: поиск постов + подсчёт комментариев",
+    "CRM: список клиентов + последние заказы",
+    "Аналитика заказов: выручка по дням/месяцам/категориям",
+    "Отчёты по сотрудникам: продажи, средний чек, конверсия",
+    "Поиск товаров: фильтры по цене, категории, наличию",
+    "Личный кабинет: история заказов + статусы",
+    "Админка: топ-покупатели, топ-товары, возвраты",
+    "Мониторинг: заказы за последние 24 часа + аномалии",
+    "Рекомендательная система: похожие товары (упрощённо)",
+    "Отчёт по регионам: выручка, количество заказов, средний чек",
+    "Массовый импорт + последующий анализ скорости"
+  ]}
+>
+
+**Требования:**
+- выбери 5–7 типичных запросов из сценария
+- для каждого:
+  - EXPLAIN ANALYZE + BUFFERS
+  - определи узкое место
+  - предложи оптимизацию (индекс, переписывание, матвью, денормализация)
+- сделай 2–3 проверки статистики / bloat / неиспользуемых индексов
+- составь итоговый список рекомендаций (5–10 пунктов)
+
+Это задание — полноценный кейс для собеседования или портфолио по оптимизации PostgreSQL.
+</TaskWithVariants>
+
+:::tip
+Хороший план — это когда actual rows ≈ estimated rows,  
+а Execution Time укладывается в твои SLA.  
+Главные инструменты:  
+EXPLAIN ANALYZE + BUFFERS — твой лучший друг  
+ANALYZE — когда статистика врёт  
+pg_stat_* — когда нужно понять, что происходит в проде
+:::

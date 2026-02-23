@@ -1,0 +1,238 @@
+---
+sidebar_position: 8
+description: "Практика по нормализации, денормализации, выбору ключей, триггерам и материализованным представлениям"
+---
+
+import { RandomVariantButton, TaskWithVariants, CodeBlockGo } from "../../src/components/practicModules/practic";
+
+# Практика: Нормализация и денормализация
+
+<CodeBlockGo />
+
+## Задание 1 — Приведение к нормальным формам
+
+<TaskWithVariants
+  taskId="norm-1-forms"
+  title="Задание 1: Приведение неудовлетворительной схемы к 1NF–3NF"
+  difficulty={["Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий","Лёгкий"]}
+  estimatedTime="15-30 минут"
+  description="Возьми не нормализованную таблицу и приведи её к 1NF, затем к 2NF, затем к 3NF."
+  variants={[
+    "Таблица заказов с полями customer_name, customer_phone, products_list, quantities_list",
+    "Таблица сотрудников: employee_id, name, department_name, department_manager, department_location",
+    "Таблица студентов: student_id, name, courses_list, grades_list, teachers_list",
+    "Таблица бронирований отелей: booking_id, guest_name, guest_phone, room_numbers, room_types, check_in, check_out",
+    "Таблица событий: event_id, event_name, organizer_name, organizer_email, participants_list, venue_name, venue_address",
+    "Таблица медицинских записей: patient_id, patient_name, diagnoses_list, medications_list, doctor_name, clinic_name",
+    "Таблица блог-постов: post_id, title, author_name, author_email, tags_list, comments_count, likes_count",
+    "Таблица доставок: delivery_id, customer_name, address_string, products_json, courier_name, status_history",
+    "Таблица заказов еды: order_id, customer_phone, restaurant_name, restaurant_address, items_list, prices_list",
+    "Таблица билетов на мероприятия: ticket_id, buyer_name, event_name, seat_numbers, price_per_ticket",
+    "Таблица резюме: resume_id, candidate_name, skills_list, experiences_list, education_list",
+    "Таблица логов: log_id, user_email, action, ip_address, device_info, timestamp"
+  ]}
+>
+
+**Требования:**
+- покажи исходную "плохую" таблицу (CREATE TABLE + 2–3 INSERT)
+- приведи к 1NF (убрать повторяющиеся группы, сделать атомарные значения)
+- приведи к 2NF (убрать частичные зависимости)
+- приведи к 3NF (убрать транзитивные зависимости)
+- добавь первичные и внешние ключи
+- кратко напиши, какие аномалии устраняются на каждом шаге
+
+Пример:
+```sql
+-- Исходная (плохо)
+CREATE TABLE bad_orders (
+    order_id SERIAL PRIMARY KEY,
+    customer_name VARCHAR(100),
+    customer_phone VARCHAR(20),
+    products TEXT,           -- "Ноутбук, Мышь, Клавиатура"
+    quantities TEXT          -- "1,2,1"
+);
+
+-- 1NF
+CREATE TABLE orders_1nf (...);
+CREATE TABLE order_items_1nf (...);
+
+-- 2NF
+CREATE TABLE products (...);
+CREATE TABLE orders_2nf (...);
+CREATE TABLE order_items_2nf (...);
+
+-- 3NF
+CREATE TABLE customers (...);
+...
+```
+</TaskWithVariants>
+
+## Задание 2 — Выбор ключей и ограничений
+
+<TaskWithVariants
+  taskId="norm-2-keys"
+  title="Задание 2: Суррогатные vs естественные ключи + ограничения"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="20-35 минут"
+  description="Выбери подходящий первичный ключ и добавь важные ограничения."
+  variants={[
+    "Таблица пользователей (email, phone, name, birth_date)",
+    "Таблица книг в библиотеке (ISBN, title, author, year)",
+    "Таблица заказов (order_number, created_at, customer_id)",
+    "Таблица сотрудников (employee_number, full_name, hire_date)",
+    "Таблица товаров (sku, name, barcode, category)",
+    "Таблица автомобилей (vin, license_plate, brand, model)",
+    "Таблица медицинских карт (policy_number, patient_name, birth_date)",
+    "Таблица рейсов (flight_number, departure_date, airline_code)",
+    "Таблица доменов (domain_name, registrar, expiry_date)",
+    "Таблица транзакций (tx_id, account_number, amount, tx_date)",
+    "Таблица событий календаря (event_id, google_event_id, title, start_time)",
+    "Таблица комментариев (comment_id, post_id, user_id, created_at)"
+  ]}
+>
+
+**Требования:**
+- обоснуй выбор: SERIAL / UUID / естественный ключ / составной ключ
+- добавь минимум 3–4 CHECK / NOT NULL / UNIQUE ограничения
+- добавь внешние ключи где нужно
+- напиши 1–2 примера INSERT, которые должны провалиться из-за ограничений
+
+Пример:
+```sql
+CREATE TABLE users (
+    user_id     BIGSERIAL PRIMARY KEY,          -- суррогатный
+    email       VARCHAR(255) UNIQUE NOT NULL,
+    phone       VARCHAR(20) UNIQUE,
+    full_name   VARCHAR(100) NOT NULL,
+    birth_date  DATE CHECK (birth_date < CURRENT_DATE - INTERVAL '18 years'),
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+```
+</TaskWithVariants>
+
+## Задание 3 — Денормализация для скорости
+
+<TaskWithVariants
+  taskId="norm-3-denorm"
+  title="Задание 3: Денормализация + триггеры / matview"
+  difficulty={["Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний","Средний"]}
+  estimatedTime="30-50 минут"
+  description="Добавь денормализованные поля / представления для ускорения чтения."
+  variants={[
+    "Добавить в таблицу заказов количество позиций и итоговую сумму",
+    "Кэшировать полное имя клиента в таблице заказов",
+    "Добавить в таблицу товаров средний рейтинг и количество отзывов",
+    "Материализованное представление для ежедневной выручки по категориям",
+    "Денормализовать путь категории в таблице товаров (full_path)",
+    "Кэшировать количество комментариев в таблице постов",
+    "Добавить в заказы имя и телефон клиента",
+    "Материализованное представление топ-10 товаров за месяц",
+    "Денормализовать статус заказа + время последнего изменения",
+    "Кэшировать общее количество заказов клиента в таблице customers",
+    "Материализованное представление для отчёта по продажам по сотрудникам",
+    "Добавить в таблицу постов количество лайков и просмотров"
+  ]}
+>
+
+**Требования:**
+- создай триггер(ы) для автоматического обновления денормализованных полей
+- или создай материализованное представление + покажи REFRESH
+- сравни запрос с JOIN и запрос с денормализованным полем (EXPLAIN ANALYZE можно описать словами)
+
+Пример:
+```sql
+ALTER TABLE orders ADD COLUMN items_count INTEGER DEFAULT 0;
+
+CREATE TRIGGER update_items_count
+AFTER INSERT OR UPDATE OR DELETE ON order_items
+FOR EACH ROW EXECUTE FUNCTION update_order_items_count();
+```
+</TaskWithVariants>
+
+## Задание 4 — Антипаттерны и рефакторинг
+
+<TaskWithVariants
+  taskId="norm-4-antipatterns"
+  title="Задание 4: Поиск и исправление антипаттернов"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="40-70 минут"
+  description="Найди проблемы в предложенной схеме и предложи улучшения."
+  variants={[
+    "God Table: всё про заказы, клиентов, товары, отзывы в одной таблице",
+    "EAV для фиксированных атрибутов товаров (цвет, размер, вес и т.д.)",
+    "Полиморфные комментарии без нормальных внешних ключей",
+    "Хранение JSON-строки вместо нормализованной таблицы order_items",
+    "Отсутствие внешних ключей + дублирование названий отделов",
+    "UUID как PK везде, даже там где SERIAL был бы лучше",
+    "Хранение истории статусов заказа в TEXT-поле",
+    "Повторение email клиента в каждой таблице заказов/платежей",
+    "Отдельные таблицы для каждого типа адреса (shipping, billing)",
+    "Хранение списка тегов в TEXT-поле вместо связи many-to-many",
+    "Отсутствие CHECK на положительную цену и количество",
+    "Одна большая таблица логов без партиционирования"
+  ]}
+>
+
+**Требования:**
+- опиши 3–5 проблем (аномалии, производительность, целостность)
+- предложи нормализованную / гибридную схему
+- добавь ограничения, индексы, комментарии
+- обоснуй, где денормализация всё-таки оправдана
+
+Пример:
+```sql
+-- Плохо:
+CREATE TABLE mega_orders (... 40 колонок ...);
+
+-- Хорошо:
+CREATE TABLE customers (...);
+CREATE TABLE orders (...);
+CREATE TABLE order_items (...);
+-- + материализованное представление для отчётов
+```
+</TaskWithVariants>
+
+## Задание 5 — Итоговое: Проектирование схемы интернет-магазина
+
+<TaskWithVariants
+  taskId="norm-5-final"
+  title="Задание 5: Полноценная схема магазина (итоговое)"
+  difficulty={["Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный","Сложный"]}
+  estimatedTime="90-180 минут"
+  description="Спроектируй схему интернет-магазина от начала до конца."
+  variants={[
+    "Классический интернет-магазин одежды",
+    "Магазин электроники с характеристиками в JSONB",
+    "Маркетплейс (продавцы + товары + отзывы)",
+    "Книжный магазин с категориями и авторами",
+    "Магазин еды / доставка (рестораны + блюда + адреса)",
+    "Магазин автозапчастей (много атрибутов, совместимость)",
+    "Цветочный магазин + подписки на доставку букетов",
+    "Магазин цифровых товаров (курсы, файлы, лицензии)",
+    "Магазин услуг (мастера, записи на приём)",
+    "Магазин B2B (оптовые цены, контрагенты, лимиты)",
+    "Магазин с аукционами (ставки, время окончания)",
+    "Магазин с подписками и регулярными платежами"
+  ]}
+>
+
+**Требования:**
+- минимум 6–10 таблиц
+- нормализованная основа (1–3NF)
+- осознанная денормализация (2–4 поля / matview / кэш)
+- первичные / внешние ключи, CHECK, UNIQUE
+- индексы на самых частых операциях
+- комментарии к таблицам и ключевым колонкам
+- 1–2 триггера или функции
+- 1 материализованное представление
+- краткое описание компромиссов (где и почему денормализовано)
+
+Это задание можно использовать как полноценный кейс для портфолио или собеседования.
+</TaskWithVariants>
+
+:::tip
+Нормализация — это про безопасность и простоту поддержки.  
+Денормализация — это про скорость чтения и удобство запросов.  
+Золотое правило: нормализуй до тех пор, пока производительность чтения тебя устраивает.  
+Как только SELECT начинает тормозить — начинай думать о денормализации, но всегда с контролем консистентности (триггеры, matview, jobs).
+:::
